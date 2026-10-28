@@ -123,7 +123,11 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       folder,
     ];
     const cookies = process.env.KARAKEEP_INSTAGRAM_COOKIES_FILE;
-    if (cookies) args.push("--cookies", cookies);
+    if (cookies) {
+      // The host-mounted cookie jar is read-only. Do not let gallery-dl
+      // update session credentials or attempt to rewrite the mounted file.
+      args.push("--cookies", cookies, "-o", "extractor.cookies-update=false");
+    }
     const proxy = getProxyAgent(url, ctx.runProxy);
     if (proxy) args.push("--proxy", proxy.proxy.toString());
     args.push(url);
