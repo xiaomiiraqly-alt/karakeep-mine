@@ -28,7 +28,7 @@ const MIME: Record<string, string> = {
   ".mp4": "video/mp4", ".webm": "video/webm",
 };
 type Meta = Record<string, unknown>;
-type Media = { file: string; mime: string; size: number; meta: Meta };
+interface Media { file: string; mime: string; size: number; meta: Meta }
 
 function field(meta: Meta, key: string): string | null {
   const val = meta[key];
@@ -160,7 +160,7 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       escapeHtml(text).replace(/\n/g, "<br>") + "</p></article>";
 
     const quotaApproved = await QuotaService.checkStorageQuota(db, ctx.userId, total);
-    const fresh: Array<typeof assets.$inferInsert> = [];
+    const fresh: (typeof assets.$inferInsert)[] = [];
     let photos = 0, videos = 0, bannerFrame = false;
 
     for (const item of [...media, ...frames]) {
@@ -235,6 +235,8 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       (error instanceof Error ? error.name : "error") + "); using regular crawler.");
     return false;
   } finally {
-    await fs.rm(folder, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(folder, { recursive: true, force: true }).catch((error: unknown) => {
+      ctx.log.warn("Failed to clean up Instagram temporary folder: " + String(error));
+    });
   }
 }
