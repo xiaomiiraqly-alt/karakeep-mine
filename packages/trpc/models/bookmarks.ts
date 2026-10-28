@@ -170,6 +170,38 @@ export class Bookmark extends BareBookmark {
   ): Promise<ZBookmark> {
     const { tagsOnBookmarks, link, text, asset, assets, ...rest } = bookmark;
 
+    // Gallery media use private local assets. Hydrate placeholder URLs only
+    // when the bookmark content is requested by an authorized reader; never
+    // persist expiring signatures in the database or expose unrelated assets.
+    const rawHtml = includeContent && link
+      ? await Bookmark.getBookmarkHtmlContent(link, bookmark.userId)
+      : null;
+    const allowedMediaIds = new Set(
+      assets
+        .filter((item) =>
+          [
+            AssetTypes.LINK_BANNER_IMAGE,
+            AssetTypes.LINK_INSTAGRAM_IMAGE,
+            AssetTypes.LINK_INSTAGRAM_VIDEO,
+            AssetTypes.LINK_VIDEO,
+          ].includes(item.assetType),
+        )
+        .map((item) => item.id),
+    );
+    const htmlContent = rawHtml?.replace(
+      /src="karakeep-asset:([a-zA-Z0-9-]+)"/g,
+      (_match, id: string) =>
+        allowedMediaIds.has(id)
+          ? 'src="' +
+            Asset.getPublicSignedAssetUrl(
+              id,
+              bookmark.userId,
+              getAlignedExpiry(3600, 900),
+            ).replaceAll("&", "&amp;") +
+            '"'
+          : "",
+    ) ?? null;
+
     let content: ZBookmarkContent = {
       type: BookmarkTypes.UNKNOWN,
     };
@@ -196,9 +228,7 @@ export class Bookmark extends BareBookmark {
         description: link.description,
         imageUrl: link.imageUrl,
         favicon: link.favicon,
-        htmlContent: includeContent
-          ? await Bookmark.getBookmarkHtmlContent(link, bookmark.userId)
-          : null,
+        htmlContent,
         readerViewStatus: link.readerViewStatus,
         readerViewScore: link.readerViewScore,
         preferredPreview: getPreferredLinkPreview({
