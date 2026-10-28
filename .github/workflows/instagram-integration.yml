@@ -13,6 +13,11 @@ on:
       - ".github/workflows/instagram-integration.yml"
   workflow_dispatch:
 
+# Keep only the latest validation run for each PR or branch.
+concurrency:
+  group: instagram-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
