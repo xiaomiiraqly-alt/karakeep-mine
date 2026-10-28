@@ -175,13 +175,13 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       files = await mediaFiles(folder);
       if (!files.length) {
         const detail = (run.data.stderr || "")
-          .split("\\n")
+          .split("\n")
           .filter(Boolean)
           .slice(-2)
           .join("; ")
-          .replace(/https?:\\/\\/\\S+/g, "[URL]")
+          .replace(/https?:\/\/\S+/g, "[URL]")
           .replace(
-            /(?:sessionid|csrftoken|authorization)\\s*[:=]\\s*\\S+/gi,
+            /(?:sessionid|csrftoken|authorization)\s*[:=]\s*\S+/gi,
             "[secret]",
           )
           .slice(0, 320);
