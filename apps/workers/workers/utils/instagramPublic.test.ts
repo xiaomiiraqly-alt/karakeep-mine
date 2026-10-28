@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  downloadPublicInstagramPost,
   isInstagramCdnUrl,
   parsePublicInstagramPost,
 } from "./instagramPublic";
@@ -145,4 +149,73 @@ describe("anonymous Instagram GraphQL extractor", () => {
     };
     expect(parsePublicInstagramPost(corrupted)).toBeNull();
   });
+  it("downloads and numbers all public images, preserving text in their metadata", async () => {
+    const folder = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-public-test-"));
+    const carousel = {
+      data: {
+        xdt_api__v1__media__shortcode__web_info: {
+          items: [
+            {
+              user: { username: "test_user" },
+              caption: { text: "Complete caption" },
+              carousel_media: Array.from({ length: 12 }, (_, index) => ({
+                image_versions2: {
+                  candidates: [{
+                    url: "https://scontent.cdninstagram.com/media-" + index + ".jpg",
+                  }],
+                },
+              })),
+            },
+          ],
+        },
+      },
+    };
+    const mockedFetch = vi.fn(async (url: string | URL | Request) => {
+      const value = String(url);
+      if (value === "https://www.instagram.com/") {
+        return new Response("", { status: 200 });
+      }
+      if (value === "https://www.instagram.com/graphql/query") {
+        return new Response(JSON.stringify(carousel), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (value.startsWith("https://scontent.cdninstagram.com/media-")) {
+        return new Response(new Uint8Array([255, 216, 255, 217]), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      throw new Error("Unexpected external request");
+    });
+    vi.stubGlobal("fetch", mockedFetch);
+    try {
+      const count = await downloadPublicInstagramPost(
+        "De7J5uajAKm",
+        folder,
+        1_000_000,
+        20_000_000,
+        new AbortController().signal,
+      );
+      expect(count).toBe(12);
+      const downloaded = (await fs.readdir(folder)).sort();
+      expect(downloaded).toHaveLength(24);
+      expect(downloaded).toContain("001.jpg");
+      expect(downloaded).toContain("012.jpg");
+      const metadata = JSON.parse(
+        await fs.readFile(path.join(folder, "012.jpg.json"), "utf8"),
+      ) as { num: number; description: string; username: string };
+      expect(metadata).toEqual({
+        num: 12,
+        description: "Complete caption",
+        username: "test_user",
+      });
+      expect(mockedFetch).toHaveBeenCalledTimes(14);
+    } finally {
+      vi.unstubAllGlobals();
+      await fs.rm(folder, { recursive: true, force: true });
+    }
+  });
+
 });
