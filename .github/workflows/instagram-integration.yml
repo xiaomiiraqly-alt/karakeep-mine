@@ -32,6 +32,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: ./tooling/github/setup
+      - name: Check out latest feature branch
+        run: |
+          git fetch origin feature/instagram-media-ai
+          git checkout -B feature/instagram-media-ai origin/feature/instagram-media-ai
       - name: Apply repository formatter to workers
         run: pnpm --filter @karakeep/workers format:fix
       - name: Commit formatted workers changes
@@ -41,6 +45,7 @@ jobs:
           git add apps/workers
           if ! git diff --cached --quiet; then
             git commit -m "style(instagram): apply oxfmt formatting"
+            git pull --rebase origin feature/instagram-media-ai
             git push origin HEAD:feature/instagram-media-ai
           fi
 
