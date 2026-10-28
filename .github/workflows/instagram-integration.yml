@@ -17,6 +17,28 @@ permissions:
   contents: read
 
 jobs:
+  autoformat:
+    # One-time branch cleanup. This job will be removed after committing
+    # oxfmt's canonical output and is never allowed on pull_request events.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/instagram-media-ai'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./tooling/github/setup
+      - name: Apply repository formatter to workers
+        run: pnpm --filter @karakeep/workers format:fix
+      - name: Commit formatted workers changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/workers
+          if ! git diff --cached --quiet; then
+            git commit -m "style(instagram): apply oxfmt formatting"
+            git push origin HEAD:feature/instagram-media-ai
+          fi
+
   workers:
     runs-on: ubuntu-latest
     steps:
