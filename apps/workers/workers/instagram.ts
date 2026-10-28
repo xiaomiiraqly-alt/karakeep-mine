@@ -20,6 +20,7 @@ import { tryCatch } from "@karakeep/shared/tryCatch";
 
 import type { CrawlContext } from "./crawlerWorker";
 import { instagramCanonicalUrl } from "./utils/instagramUrls";
+import { buildInstagramReaderHtml } from "./utils/instagramReaderHtml";
 
 const MAX_MEDIA = 20;
 const MAX_FILE = 80 * 1024 * 1024;
@@ -59,15 +60,6 @@ function author(meta: Meta): string | null {
     field(meta, "username") ??
     field(meta, "owner_username") ??
     field(meta, "user")
-  );
-}
-function escapeHtml(s: string): string {
-  return s.replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ] ?? c,
   );
 }
 async function mediaFiles(folder: string): Promise<string[]> {
@@ -308,36 +300,16 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       });
     }
 
-    // Keep the complete carousel in the bookmark's Reader view, not just its
-    // cover. Replace these stable placeholders with short-lived signed asset
-    // URLs only when an authorized reader fetches the bookmark content.
-    const gallery = fresh
-      .slice(0, media.length)
-      .map((item, index) => {
-        const source = "karakeep-asset:" + item.id;
-        if (item.contentType?.startsWith("video/")) {
-          return (
-            '<figure><video src="' +
-            source +
-            '" controls playsinline preload="metadata" style="width:100%;max-width:100%"></video></figure>'
-          );
-        }
-        return (
-          '<figure><img src="' +
-          source +
-          '" alt="Instagram photo ' +
-          (index + 1) +
-          '" loading="lazy" style="width:100%;height:auto;max-width:100%"></figure>'
-        );
-      })
-      .join("");
-    const html =
-      "<article><h1>" +
-      escapeHtml(title) +
-      "</h1>" +
-      gallery +
-      (text ? "<p>" + escapeHtml(text).replace(/\n/g, "<br>") + "</p>" : "") +
-      "</article>";
+    // Archive captions and original media in Reader view; links are signed
+    // on each authorized read rather than persisted with expiring credentials.
+    const html = buildInstagramReaderHtml(
+      title,
+      text,
+      fresh.slice(0, media.length).map((item) => ({
+        id: item.id,
+        contentType: item.contentType ?? null,
+      })),
+    );
 
     const types = [
       AssetTypes.LINK_BANNER_IMAGE,
