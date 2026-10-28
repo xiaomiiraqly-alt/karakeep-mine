@@ -176,16 +176,15 @@ export class Bookmark extends BareBookmark {
     const rawHtml = includeContent && link
       ? await Bookmark.getBookmarkHtmlContent(link, bookmark.userId)
       : null;
+    const allowedMediaTypes = new Set<AssetTypes>([
+      AssetTypes.LINK_BANNER_IMAGE,
+      AssetTypes.LINK_INSTAGRAM_IMAGE,
+      AssetTypes.LINK_INSTAGRAM_VIDEO,
+      AssetTypes.LINK_VIDEO,
+    ]);
     const allowedMediaIds = new Set(
       assets
-        .filter((item) =>
-          [
-            AssetTypes.LINK_BANNER_IMAGE,
-            AssetTypes.LINK_INSTAGRAM_IMAGE,
-            AssetTypes.LINK_INSTAGRAM_VIDEO,
-            AssetTypes.LINK_VIDEO,
-          ].includes(item.assetType),
-        )
+        .filter((item) => allowedMediaTypes.has(item.assetType))
         .map((item) => item.id),
     );
     const htmlContent = rawHtml?.replace(
