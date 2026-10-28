@@ -289,8 +289,11 @@ async function inferTagsFromText(
   potentialRelevantTags?: string[],
 ) {
   const visualContext = await getInstagramVisualContext(
-    bookmark.link?.url, bookmark.id, bookmark.userId,
-    inferenceClient, abortSignal,
+    bookmark.link?.url,
+    bookmark.id,
+    bookmark.userId,
+    inferenceClient,
+    abortSignal,
   );
   const prompt = await buildPrompt(
     bookmark,
