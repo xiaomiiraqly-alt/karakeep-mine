@@ -120,6 +120,17 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
     }
     if (!media.length) return false;
 
+    // Instagram carousels may download with unordered media IDs. Prefer the
+    // per-slide index from gallery-dl metadata for predictable media ordering.
+    const slideIndex = (item: Media): number => {
+      const value = item.meta.num;
+      return typeof value === "number" && Number.isFinite(value)
+        ? value
+        : Number.MAX_SAFE_INTEGER;
+    };
+    media.sort((a, b) => slideIndex(a) - slideIndex(b) ||
+      a.file.localeCompare(b.file));
+
     // Frames enrich Reel summaries. Audio is not transcribed.
     const frames: Media[] = [];
     for (const [index, item] of media.entries()) {
@@ -187,12 +198,15 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       AssetTypes.LINK_BANNER_IMAGE, AssetTypes.LINK_VIDEO,
       AssetTypes.LINK_INSTAGRAM_IMAGE, AssetTypes.LINK_INSTAGRAM_VIDEO,
       AssetTypes.LINK_INSTAGRAM_FRAME,
+      // A previously crawled webpage may have stored its HTML in a separate
+      // asset. Replacing contentAssetId with null must remove that old asset.
+      AssetTypes.LINK_HTML_CONTENT,
     ];
     const previous = await db.query.assets.findMany({
       where: and(eq(assets.bookmarkId, ctx.bookmarkId), inArray(assets.assetType, types)),
     });
     // SQLite transaction is synchronous here.
-    db.transaction((tx) => {
+    await db.transaction((tx) => {
       if (previous.length) {
         tx.delete(assets).where(inArray(assets.id, previous.map((a) => a.id))).run();
       }
