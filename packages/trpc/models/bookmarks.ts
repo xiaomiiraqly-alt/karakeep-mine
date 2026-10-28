@@ -62,6 +62,7 @@ import { htmlToPlainText } from "@karakeep/shared/utils/htmlUtils";
 
 import { AuthedContext } from "..";
 import { mapDBAssetTypeToUserType } from "../lib/attachments";
+import { hydrateInstagramReaderAssets } from "../lib/instagramReaderAssets";
 import { getPreferredLinkPreview } from "../lib/linkPreview";
 import { Asset } from "./assets";
 import { List } from "./lists";
@@ -187,19 +188,16 @@ export class Bookmark extends BareBookmark {
         .filter((item) => allowedMediaTypes.has(item.assetType))
         .map((item) => item.id),
     );
-    const htmlContent = rawHtml?.replace(
-      /src="karakeep-asset:([a-zA-Z0-9-]+)"/g,
-      (_match, id: string) =>
-        allowedMediaIds.has(id)
-          ? 'src="' +
-            Asset.getPublicSignedAssetUrl(
-              id,
-              bookmark.userId,
-              getAlignedExpiry(3600, 900),
-            ).replaceAll("&", "&amp;") +
-            '"'
-          : "",
-    ) ?? null;
+    const htmlContent = hydrateInstagramReaderAssets(
+      rawHtml,
+      allowedMediaIds,
+      (id) =>
+        Asset.getPublicSignedAssetUrl(
+          id,
+          bookmark.userId,
+          getAlignedExpiry(3600, 900),
+        ),
+    );
 
     let content: ZBookmarkContent = {
       type: BookmarkTypes.UNKNOWN,
