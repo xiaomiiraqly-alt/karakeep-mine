@@ -17,6 +17,8 @@ import { DequeuedJob } from "@karakeep/shared/queueing";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 
+import { getInstagramVisualContext } from "./instagramVisual";
+
 async function fetchBookmarkDetailsForSummary(bookmarkId: string) {
   const bookmark = await db.query.bookmarks.findFirst({
     where: eq(bookmarks.id, bookmarkId),
@@ -124,6 +126,14 @@ URL: ${link.url ?? ""}
     );
     return;
   }
+
+  // Instagram captions alone can omit the actual content of photos/Reels.
+  // Include observed images and sampled frames; audio is not transcribed.
+  const visualContext = await getInstagramVisualContext(
+    bookmarkData.link?.url, bookmarkId, bookmarkData.userId,
+    inferenceClient, job.abortSignal,
+  );
+  if (visualContext) textToSummarize += "\nVisual observations:\n" + visualContext;
 
   if (!textToSummarize.trim()) {
     logger.info(
