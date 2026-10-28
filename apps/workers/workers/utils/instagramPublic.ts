@@ -249,8 +249,8 @@ export async function downloadPublicInstagramPost(
       written.push(metaFile);
     }
   } catch (error) {
-    await Promise.all(
-      written.map((name) => fs.rm(name, { force: true }).catch(() => {})),
+    await Promise.allSettled(
+      written.map((name) => fs.rm(name, { force: true })),
     );
     throw error;
   }
