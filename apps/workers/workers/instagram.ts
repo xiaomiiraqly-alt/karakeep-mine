@@ -21,6 +21,7 @@ import { tryCatch } from "@karakeep/shared/tryCatch";
 import type { CrawlContext } from "./crawlerWorker";
 import { instagramCanonicalUrl } from "./utils/instagramUrls";
 import { buildInstagramReaderHtml } from "./utils/instagramReaderHtml";
+import { downloadPublicInstagramPost } from "./utils/instagramPublic";
 
 const MAX_MEDIA = 20;
 const MAX_FILE = 80 * 1024 * 1024;
@@ -98,75 +99,100 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
   const storedIds: string[] = [];
   let committed = false;
   try {
-    // gallery-dl never receives arbitrary URLs; the canonical host/path is validated.
-    const args = [
-      "--config-ignore",
-      "--no-input",
-      "--no-part",
-      "--no-mtime",
-      "-o",
-      "directory=[]",
-      "-o",
-      "filename={media_id}.{extension}",
-      "--write-metadata",
-      "--range",
-      "1-" + MAX_MEDIA,
-      "--filesize-max",
-      String(fileLimit),
-      "-R",
-      "1",
-      "--http-timeout",
-      "15",
-      "--whitelist",
-      "instagram",
-      "-D",
-      folder,
-    ];
-    const cookies = process.env.KARAKEEP_INSTAGRAM_COOKIES_FILE;
-    if (cookies) {
-      // The host-mounted cookie jar is read-only. Do not let gallery-dl
-      // update session credentials or attempt to rewrite the mounted file.
-      args.push("--cookies", cookies, "-o", "extractor.cookies-update=false");
-    }
-    const proxy = getProxyAgent(url, ctx.runProxy);
-    if (proxy) args.push("--proxy", proxy.proxy.toString());
-    args.push(url);
-    const run = await tryCatch(
-      execa("gallery-dl", args, {
-        cancelSignal: ctx.abortSignal,
-        timeout: DOWNLOAD_TIMEOUT_MS,
-        reject: false,
-      }),
-    );
-    if (run.error) {
-      ctx.log.warn("Instagram downloader unavailable; using normal crawler.");
-      return false;
-    }
-    ctx.abortSignal.throwIfAborted();
-
-    const files = await mediaFiles(folder);
-    if (!files.length) {
-      // gallery-dl uses exit code 4 for extraction errors (such as HTTP
-      // authentication or rate limits). Preserve actionable status messages,
-      // but never log query tokens or raw external URLs.
-      const detail = (run.data.stderr || "")
-        .split("\n")
-        .filter(Boolean)
-        .slice(-2)
-        .join("; ")
-        .replace(/https?:\/\/\S+/g, "[URL]")
-        .replace(
-          /(?:sessionid|csrftoken|authorization)\s*[:=]\s*\S+/gi,
-          "[secret]",
-        )
-        .slice(0, 320);
-      ctx.log.warn(
-        "Instagram extractor returned no media (exit " +
-          run.data.exitCode +
-          (detail ? "; " + detail : "") +
-          "); using normal crawler.",
+    // Prefer the public Instagram data endpoint: it can return complete
+    // carousels when the gallery-dl extractor redirects to a login page.
+    // Neither the server nor the user needs an Instagram account.
+    let files: string[] = [];
+    try {
+      const shortcode = new URL(url).pathname.split("/")[2];
+      const count = await downloadPublicInstagramPost(
+        shortcode,
+        folder,
+        fileLimit,
+        MAX_BATCH,
+        ctx.abortSignal,
       );
-      return false;
+      files = await mediaFiles(folder);
+      ctx.log.info("Fetched " + count + " public Instagram media items.");
+    } catch (error) {
+      ctx.abortSignal.throwIfAborted();
+      const reason =
+        error instanceof Error ? error.message : "Unknown downloader error";
+      ctx.log.warn(
+        "Anonymous Instagram download failed (" +
+          reason.replace(/https?:\/\/\S+/g, "[URL]").slice(0, 200) +
+          "); trying gallery-dl.",
+      );
+    }
+
+    if (!files.length) {
+      // gallery-dl never receives arbitrary URLs; the canonical host/path
+      // is validated. Logged-in cookies, when configured, are optional.
+      const args = [
+        "--config-ignore",
+        "--no-input",
+        "--no-part",
+        "--no-mtime",
+        "-o",
+        "directory=[]",
+        "-o",
+        "filename={media_id}.{extension}",
+        "--write-metadata",
+        "--range",
+        "1-" + MAX_MEDIA,
+        "--filesize-max",
+        String(fileLimit),
+        "-R",
+        "1",
+        "--http-timeout",
+        "15",
+        "--whitelist",
+        "instagram",
+        "-D",
+        folder,
+      ];
+      const cookies = process.env.KARAKEEP_INSTAGRAM_COOKIES_FILE;
+      if (cookies) {
+        // The host-mounted cookie jar is read-only; never modify it.
+        args.push("--cookies", cookies, "-o", "extractor.cookies-update=false");
+      }
+      const proxy = getProxyAgent(url, ctx.runProxy);
+      if (proxy) args.push("--proxy", proxy.proxy.toString());
+      args.push(url);
+      const run = await tryCatch(
+        execa("gallery-dl", args, {
+          cancelSignal: ctx.abortSignal,
+          timeout: DOWNLOAD_TIMEOUT_MS,
+          reject: false,
+        }),
+      );
+      if (run.error) {
+        ctx.log.warn("Instagram downloader unavailable; using normal crawler.");
+        return false;
+      }
+      ctx.abortSignal.throwIfAborted();
+
+      files = await mediaFiles(folder);
+      if (!files.length) {
+        const detail = (run.data.stderr || "")
+          .split("\\n")
+          .filter(Boolean)
+          .slice(-2)
+          .join("; ")
+          .replace(/https?:\\/\\/\\S+/g, "[URL]")
+          .replace(
+            /(?:sessionid|csrftoken|authorization)\\s*[:=]\\s*\\S+/gi,
+            "[secret]",
+          )
+          .slice(0, 320);
+        ctx.log.warn(
+          "Instagram extractor returned no media (exit " +
+            run.data.exitCode +
+            (detail ? "; " + detail : "") +
+            "); using normal crawler.",
+        );
+        return false;
+      }
     }
 
     const media: Media[] = [];
