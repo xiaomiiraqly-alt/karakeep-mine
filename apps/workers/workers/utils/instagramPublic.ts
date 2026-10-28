@@ -90,8 +90,7 @@ export function parsePublicInstagramPost(
   const rawAuthor = object(post.user)?.username;
   return {
     author: typeof rawAuthor === "string" ? rawAuthor.slice(0, 100) : null,
-    caption:
-      typeof rawCaption === "string" ? rawCaption.slice(0, 30_000) : "",
+    caption: typeof rawCaption === "string" ? rawCaption.slice(0, 30_000) : "",
     media,
   };
 }
@@ -160,8 +159,7 @@ export async function fetchPublicInstagramPost(
       doc_id: DOC_ID,
       variables: JSON.stringify({
         shortcode,
-        __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider:
-          false,
+        __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false,
       }),
     }),
     signal: signalWithTimeout(signal, 20_000),
@@ -206,9 +204,9 @@ export async function downloadPublicInstagramPost(
         throw new Error("Instagram CDN HTTP " + response.status);
       const contentType = response.headers.get("content-type") ?? "";
       if (
-        !contentType.toLowerCase().startsWith(
-          item.type === "video" ? "video/" : "image/",
-        )
+        !contentType
+          .toLowerCase()
+          .startsWith(item.type === "video" ? "video/" : "image/")
       ) {
         throw new Error("Unexpected Instagram media content type");
       }

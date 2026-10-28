@@ -94,26 +94,28 @@ describe("anonymous Instagram GraphQL extractor", () => {
     ).toEqual({
       author: null,
       caption: "",
-      media: [
-        { type: "image", url: "https://x.cdninstagram.com/single.jpg" },
-      ],
+      media: [{ type: "image", url: "https://x.cdninstagram.com/single.jpg" }],
     });
   });
-
 
   it("retains all 12 slides without truncating the carousel", () => {
     const many = {
       data: {
         xdt_api__v1__media__shortcode__web_info: {
-          items: [{
-            carousel_media: Array.from({ length: 12 }, (_, index) => ({
-              image_versions2: {
-                candidates: [{
-                  url: "https://scontent.cdninstagram.com/" + index + ".jpg",
-                }],
-              },
-            })),
-          }],
+          items: [
+            {
+              carousel_media: Array.from({ length: 12 }, (_, index) => ({
+                image_versions2: {
+                  candidates: [
+                    {
+                      url:
+                        "https://scontent.cdninstagram.com/" + index + ".jpg",
+                    },
+                  ],
+                },
+              })),
+            },
+          ],
         },
       },
     };
@@ -139,18 +141,22 @@ describe("anonymous Instagram GraphQL extractor", () => {
     const corrupted = {
       data: {
         xdt_api__v1__media__shortcode__web_info: {
-          items: [{
-            image_versions2: {
-              candidates: [{ url: "https://127.0.0.1/private" }],
+          items: [
+            {
+              image_versions2: {
+                candidates: [{ url: "https://127.0.0.1/private" }],
+              },
             },
-          }],
+          ],
         },
       },
     };
     expect(parsePublicInstagramPost(corrupted)).toBeNull();
   });
   it("downloads and numbers all public images, preserving text in their metadata", async () => {
-    const folder = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-public-test-"));
+    const folder = await fs.mkdtemp(
+      path.join(os.tmpdir(), "instagram-public-test-"),
+    );
     const carousel = {
       data: {
         xdt_api__v1__media__shortcode__web_info: {
@@ -160,9 +166,14 @@ describe("anonymous Instagram GraphQL extractor", () => {
               caption: { text: "Complete caption" },
               carousel_media: Array.from({ length: 12 }, (_, index) => ({
                 image_versions2: {
-                  candidates: [{
-                    url: "https://scontent.cdninstagram.com/media-" + index + ".jpg",
-                  }],
+                  candidates: [
+                    {
+                      url:
+                        "https://scontent.cdninstagram.com/media-" +
+                        index +
+                        ".jpg",
+                    },
+                  ],
                 },
               })),
             },
@@ -217,5 +228,4 @@ describe("anonymous Instagram GraphQL extractor", () => {
       await fs.rm(folder, { recursive: true, force: true });
     }
   });
-
 });
