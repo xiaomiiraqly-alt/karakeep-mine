@@ -150,9 +150,21 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
 
     const files = await mediaFiles(folder);
     if (!files.length) {
+      // gallery-dl uses exit code 4 for extraction errors (such as HTTP
+      // authentication or rate limits). Preserve actionable status messages,
+      // but never log query tokens or raw external URLs.
+      const detail = (run.data.stderr || "")
+        .split("\n")
+        .filter(Boolean)
+        .slice(-2)
+        .join("; ")
+        .replace(/https?:\/\/\S+/g, "[URL]")
+        .replace(/(?:sessionid|csrftoken|authorization)\s*[:=]\s*\S+/gi, "[secret]")
+        .slice(0, 320);
       ctx.log.warn(
         "Instagram extractor returned no media (exit " +
           run.data.exitCode +
+          (detail ? "; " + detail : "") +
           "); using normal crawler.",
       );
       return false;
@@ -241,12 +253,6 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
     const creator =
       author(meta) ?? media.map((m) => author(m.meta)).find(Boolean) ?? null;
     const title = creator ? "Instagram — @" + creator : "Instagram post";
-    const html =
-      "<article><h1>" +
-      escapeHtml(title) +
-      "</h1><p>" +
-      escapeHtml(text).replace(/\n/g, "<br>") +
-      "</p></article>";
 
     const quotaApproved = await QuotaService.checkStorageQuota(
       db,
@@ -301,6 +307,37 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
         fileName: path.basename(item.file),
       });
     }
+
+    // Keep the complete carousel in the bookmark's Reader view, not just its
+    // cover. Replace these stable placeholders with short-lived signed asset
+    // URLs only when an authorized reader fetches the bookmark content.
+    const gallery = fresh
+      .slice(0, media.length)
+      .map((item, index) => {
+        const source = "karakeep-asset:" + item.id;
+        if (item.contentType?.startsWith("video/")) {
+          return (
+            '<figure><video src="' +
+            source +
+            '" controls playsinline preload="metadata" style="width:100%;max-width:100%"></video></figure>'
+          );
+        }
+        return (
+          '<figure><img src="' +
+          source +
+          '" alt="Instagram photo ' +
+          (index + 1) +
+          '" loading="lazy" style="width:100%;height:auto;max-width:100%"></figure>'
+        );
+      })
+      .join("");
+    const html =
+      "<article><h1>" +
+      escapeHtml(title) +
+      "</h1>" +
+      gallery +
+      (text ? "<p>" + escapeHtml(text).replace(/\n/g, "<br>") + "</p>" : "") +
+      "</article>";
 
     const types = [
       AssetTypes.LINK_BANNER_IMAGE,
