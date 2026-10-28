@@ -1,0 +1,49 @@
+name: Instagram integration verification
+
+on:
+  push:
+    branches:
+      - feature/instagram-media-ai
+  pull_request:
+    paths:
+      - "apps/workers/**"
+      - "packages/db/schema.ts"
+      - "packages/trpc/lib/attachments.ts"
+      - "docker/Dockerfile"
+      - ".github/workflows/instagram-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: ./tooling/github/setup
+      - name: Typecheck workers
+        run: pnpm --filter @karakeep/workers typecheck
+      - name: Unit tests for Instagram URLs
+        run: pnpm --filter @karakeep/workers exec vitest run workers/utils/instagramUrls.test.ts
+      - name: Format
+        run: pnpm format
+      - name: Lint
+        run: pnpm lint
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build custom all-in-one image (no publishing)
+        run: docker build --target aio -t karakeep-instagram:smoke -f docker/Dockerfile .
+      - name: Check Instagram downloader is included
+        run: docker run --rm --entrypoint /usr/local/bin/gallery-dl karakeep-instagram:smoke --version
+      - name: Check FFmpeg is included
+        run: docker run --rm --entrypoint /usr/bin/ffmpeg karakeep-instagram:smoke -version
