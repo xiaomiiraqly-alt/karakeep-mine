@@ -96,6 +96,28 @@ describe("anonymous Instagram GraphQL extractor", () => {
     });
   });
 
+
+  it("retains all 12 slides without truncating the carousel", () => {
+    const many = {
+      data: {
+        xdt_api__v1__media__shortcode__web_info: {
+          items: [{
+            carousel_media: Array.from({ length: 12 }, (_, index) => ({
+              image_versions2: {
+                candidates: [{
+                  url: "https://scontent.cdninstagram.com/" + index + ".jpg",
+                }],
+              },
+            })),
+          }],
+        },
+      },
+    };
+    const media = parsePublicInstagramPost(many)?.media;
+    expect(media).toHaveLength(12);
+    expect(media?.[11]?.url).toEndWith("/11.jpg");
+  });
+
   it("rejects private-network and attacker-owned media hosts", () => {
     expect(isInstagramCdnUrl("http://scontent.cdninstagram.com/img.jpg")).toBe(
       false,
@@ -110,9 +132,17 @@ describe("anonymous Instagram GraphQL extractor", () => {
     expect(isInstagramCdnUrl("https://scontent.fbcdn.net/image.jpg")).toBe(
       true,
     );
-    const corrupted = structuredClone(fixture);
-    corrupted.data.xdt_api__v1__media__shortcode__web_info.items[0].carousel_media[0].image_versions2.candidates[0].url =
-      "https://127.0.0.1/private";
+    const corrupted = {
+      data: {
+        xdt_api__v1__media__shortcode__web_info: {
+          items: [{
+            image_versions2: {
+              candidates: [{ url: "https://127.0.0.1/private" }],
+            },
+          }],
+        },
+      },
+    };
     expect(parsePublicInstagramPost(corrupted)).toBeNull();
   });
 });
