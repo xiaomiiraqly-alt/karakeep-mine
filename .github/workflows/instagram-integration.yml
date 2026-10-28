@@ -10,6 +10,9 @@ on:
       - "apps/workers/**"
       - "packages/db/schema.ts"
       - "packages/trpc/lib/attachments.ts"
+      - "packages/trpc/lib/instagramReaderAssets.ts"
+      - "packages/trpc/lib/instagramReaderAssets.test.ts"
+      - "packages/trpc/models/bookmarks.ts"
       - "docker/Dockerfile"
       - ".github/workflows/instagram-integration.yml"
   workflow_dispatch:
@@ -32,8 +35,10 @@ jobs:
       - uses: ./tooling/github/setup
       - name: Typecheck workers
         run: pnpm --filter @karakeep/workers typecheck
-      - name: Unit tests for Instagram URLs
-        run: pnpm --filter @karakeep/workers exec vitest run workers/utils/instagramUrls.test.ts
+      - name: Unit tests for Instagram URLs, gallery, and anonymous public downloads
+        run: pnpm --filter @karakeep/workers exec vitest run workers/utils/instagramUrls.test.ts workers/utils/instagramReaderHtml.test.ts workers/utils/instagramPublic.test.ts
+      - name: Unit tests for Reader asset URL authorization
+        run: pnpm --filter @karakeep/trpc exec vitest run lib/instagramReaderAssets.test.ts
       - name: Format
         run: pnpm format
       - name: Lint
