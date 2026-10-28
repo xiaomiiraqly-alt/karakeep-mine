@@ -135,6 +135,8 @@ RUN apt-get update \
         graphicsmagick \
         ghostscript \
         ffmpeg \
+        python3 \
+        python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
@@ -152,6 +154,12 @@ RUN case ${TARGETARCH} in \
 # via its system config file so every invocation picks it up without
 # changes to the worker. Fixes karakeep-app/karakeep#2758.
 RUN echo "--js-runtimes node" > /etc/yt-dlp.conf
+
+# gallery-dl extracts Instagram posts, Reels and multi-image carousels.
+# Pin the version for repeatable builds.
+RUN python3 -m venv /opt/gallery-dl \
+    && /opt/gallery-dl/bin/pip install --no-cache-dir gallery-dl==1.32.18 \
+    && ln -s /opt/gallery-dl/bin/gallery-dl /usr/local/bin/gallery-dl
 
 # Copy monolith binary from builder
 COPY --from=monolith_builder /usr/local/cargo/bin/monolith /usr/local/bin/monolith
