@@ -115,7 +115,7 @@ describe("anonymous Instagram GraphQL extractor", () => {
     };
     const media = parsePublicInstagramPost(many)?.media;
     expect(media).toHaveLength(12);
-    expect(media?.[11]?.url).toEndWith("/11.jpg");
+    expect(media?.[11]?.url).toBe("https://scontent.cdninstagram.com/11.jpg");
   });
 
   it("rejects private-network and attacker-owned media hosts", () => {
