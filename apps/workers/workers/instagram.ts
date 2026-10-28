@@ -155,7 +155,10 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
         .slice(-2)
         .join("; ")
         .replace(/https?:\/\/\S+/g, "[URL]")
-        .replace(/(?:sessionid|csrftoken|authorization)\s*[:=]\s*\S+/gi, "[secret]")
+        .replace(
+          /(?:sessionid|csrftoken|authorization)\s*[:=]\s*\S+/gi,
+          "[secret]",
+        )
         .slice(0, 320);
       ctx.log.warn(
         "Instagram extractor returned no media (exit " +

@@ -174,9 +174,10 @@ export class Bookmark extends BareBookmark {
     // Gallery media use private local assets. Hydrate placeholder URLs only
     // when the bookmark content is requested by an authorized reader; never
     // persist expiring signatures in the database or expose unrelated assets.
-    const rawHtml = includeContent && link
-      ? await Bookmark.getBookmarkHtmlContent(link, bookmark.userId)
-      : null;
+    const rawHtml =
+      includeContent && link
+        ? await Bookmark.getBookmarkHtmlContent(link, bookmark.userId)
+        : null;
     const allowedMediaTypes = new Set<AssetTypes>([
       AssetTypes.LINK_BANNER_IMAGE,
       AssetTypes.LINK_INSTAGRAM_IMAGE,

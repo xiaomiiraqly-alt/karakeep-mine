@@ -5,14 +5,16 @@ export interface InstagramReaderMedia {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) =>
-    ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    })[char] ?? char,
+  return value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char] ?? char,
   );
 }
 
@@ -47,5 +49,12 @@ export function buildInstagramReaderHtml(
   const text = caption
     ? "<p>" + escapeHtml(caption).replace(/\n/g, "<br>") + "</p>"
     : "";
-  return "<article><h1>" + escapeHtml(title) + "</h1>" + gallery + text + "</article>";
+  return (
+    "<article><h1>" +
+    escapeHtml(title) +
+    "</h1>" +
+    gallery +
+    text +
+    "</article>"
+  );
 }
