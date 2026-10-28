@@ -129,6 +129,8 @@ import {
   resolveMetadata,
 } from "./utils/metadataResolver";
 import { runParseSubprocess } from "./utils/parseSubprocess";
+import { importInstagramPost } from "./instagram";
+import { instagramCanonicalUrl } from "./utils/instagramUrls";
 import { installRedirectGuard } from "./utils/redirectGuard";
 
 const tracer = getTracer("@karakeep/workers");
@@ -404,6 +406,16 @@ async function runCrawler(
 
   log.info(`Will crawl "${truncateUrl(url)}" for link with id "${bookmarkId}"`);
   await checkDomainRateLimit(ctx);
+
+  // Prefer media extraction for Instagram posts. Fall back to regular crawling
+  // when extraction is unavailable or the post is not accessible.
+  if (!precrawledArchiveAssetId && instagramCanonicalUrl(url)) {
+    const imported = await importInstagramPost(ctx);
+    if (imported) {
+      await enqueuePostCrawlJobs(ctx, job, true);
+      return { status: "completed" };
+    }
+  }
 
   if (precrawledArchiveAssetId) {
     log.info(
@@ -1767,6 +1779,7 @@ const browserlessCrawlPage = traced(
 async function enqueuePostCrawlJobs(
   ctx: CrawlContext,
   job: DequeuedJob<ZCrawlLinkRequest>,
+  skipVideoDownload = false,
 ): Promise<void> {
   const { bookmarkId, userId, url } = ctx;
   // Propagate priority to child jobs
@@ -1807,7 +1820,7 @@ async function enqueuePostCrawlJobs(
   // Update the search index
   await triggerSearchReindex(bookmarkId, enqueueOpts);
 
-  if (serverConfig.crawler.downloadVideo) {
+  if (serverConfig.crawler.downloadVideo && !skipVideoDownload) {
     // Trigger a potential download of a video from the URL
     await VideoWorkerQueue.enqueue(
       {

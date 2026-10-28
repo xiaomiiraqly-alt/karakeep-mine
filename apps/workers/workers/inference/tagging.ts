@@ -34,6 +34,8 @@ import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 import { WebhooksService } from "@karakeep/trpc/models/webhooks.service";
 
+import { getInstagramVisualContext } from "./instagramVisual";
+
 /**
  * The maximum length of the relevant tag names to avoid bloating the inference context.
  */
@@ -95,6 +97,7 @@ async function buildPrompt(
   inferredTagLang: string,
   curatedTags?: string[],
   potentialRelevantTags?: string[],
+  visualContext = "",
 ): Promise<string | null> {
   const prompts = await fetchCustomPrompts(bookmark.userId, "text");
   if (bookmark.link) {
@@ -117,7 +120,8 @@ async function buildPrompt(
       `URL: ${bookmark.link.url}
 Title: ${bookmark.link.title ?? ""}
 Description: ${bookmark.link.description ?? ""}
-Content: ${content ?? ""}`,
+Content: ${content ?? ""}
+Visual observations: ${visualContext}`,
       serverConfig.inference.contextLength,
       tagStyle,
       curatedTags,
@@ -284,12 +288,20 @@ async function inferTagsFromText(
   curatedTags?: string[],
   potentialRelevantTags?: string[],
 ) {
+  const visualContext = await getInstagramVisualContext(
+    bookmark.link?.url,
+    bookmark.id,
+    bookmark.userId,
+    inferenceClient,
+    abortSignal,
+  );
   const prompt = await buildPrompt(
     bookmark,
     tagStyle,
     inferredTagLang,
     curatedTags,
     potentialRelevantTags,
+    visualContext,
   );
   if (!prompt) {
     return null;
