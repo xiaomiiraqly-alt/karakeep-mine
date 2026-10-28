@@ -14,7 +14,7 @@ export function hydrateInstagramReaderAssets(
     /src="karakeep-asset:([a-zA-Z0-9-]+)"/g,
     (_match, id: string) =>
       allowedIds.has(id)
-        ? 'src="' + getSignedUrl(id).replaceAll("&", "&amp;") + '"'
+        ? 'src="' + getSignedUrl(id).replace(/&/g, "&amp;") + '"'
         : "",
   );
 }
