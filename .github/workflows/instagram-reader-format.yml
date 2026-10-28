@@ -38,7 +38,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps/workers/workers/instagram.ts apps/workers/workers/utils/instagramReaderHtml.ts apps/workers/workers/utils/instagramReaderHtml.test.ts packages/trpc/models/bookmarks.ts packages/trpc/lib/instagramReaderAssets.ts packages/trpc/lib/instagramReaderAssets.test.ts
           if ! git diff --cached --quiet; then
-            git commit -m "style(instagram): apply reader oxfmt"
+            HUSKY=0 git -c core.hooksPath=/dev/null commit -m "style(instagram): apply reader oxfmt"
             git pull --rebase origin feature/instagram-inline-reader
             git push origin HEAD:feature/instagram-inline-reader
           fi
