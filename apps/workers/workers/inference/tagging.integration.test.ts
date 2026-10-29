@@ -9,7 +9,11 @@ import type { InferenceClient } from "@karakeep/shared/inference";
 import type { DequeuedJob } from "@karakeep/shared/queueing";
 import type { ZOpenAIRequest } from "@karakeep/shared-server";
 
-const state = vi.hoisted(() => ({ db: {} as object, events: vi.fn() }));
+const state = vi.hoisted(() => ({
+  db: {} as object,
+  events: vi.fn(),
+  readAsset: vi.fn(),
+}));
 vi.mock("@karakeep/db", () => ({
   db: new Proxy(
     {},
@@ -39,7 +43,7 @@ vi.mock("@karakeep/shared-server", () => ({
   setSpanAttributes: vi.fn(),
   triggerSearchReindex: vi.fn(),
   ASSET_TYPES: {},
-  readAsset: vi.fn(),
+  readAsset: state.readAsset,
 }));
 vi.mock("@karakeep/trpc/lib/ruleEngine", () => ({
   RuleEngine: { triggerOnEvent: state.events },
@@ -90,6 +94,76 @@ beforeEach(() => {
 afterEach(() => sqlite?.close());
 
 describe("full tagging persistence against migrated SQLite", () => {
+  it("stores an AI title and topical tags for a newly created text note", async () => {
+    const proposedTags = [
+      "Хэллоуин",
+      "Севастополь",
+      "Рестораны",
+      "Бары",
+      "Мероприятия",
+    ];
+    const client = {
+      inferFromText: vi.fn(async (prompt: string) => {
+        expect(prompt).toContain('"title" field');
+        expect(prompt).toContain("Хэллоуин в Севастополе");
+        return {
+          response: JSON.stringify({
+            tags: proposedTags,
+            title: "Хэллоуин в Севастополе: рестораны и бары",
+          }),
+        };
+      }),
+    } as unknown as InferenceClient;
+    await runTagging("b", request(), client);
+    expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
+      "Хэллоуин в Севастополе: рестораны и бары",
+    );
+    expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(5);
+  });
+
+  it("stores a visual AI title and tags for an image without OCR text", async () => {
+    db.delete(schema.bookmarkTexts).run();
+    db.update(schema.bookmarks)
+      .set({ type: BookmarkTypes.ASSET, title: null })
+      .run();
+    db.insert(schema.bookmarkAssets)
+      .values({
+        id: "b",
+        assetType: "image",
+        assetId: "image-1",
+        fileName: "IMG_001.png",
+        content: null,
+      })
+      .run();
+    state.readAsset.mockResolvedValue({
+      asset: Buffer.from([137, 80, 78, 71]),
+      metadata: { contentType: "image/png" },
+    });
+    const inferFromImage = vi.fn(async (prompt: string) => {
+      expect(prompt).toContain('"title" field');
+      return {
+        response: JSON.stringify({
+          title: "Современная пергола с деревянными ламелями",
+          tags: [
+            "Перголы",
+            "Ландшафтный дизайн",
+            "Архитектура",
+            "Дерево",
+            "Террасы",
+          ],
+        }),
+      };
+    });
+    await runTagging("b", request(), {
+      inferFromImage,
+    } as unknown as InferenceClient);
+    expect(inferFromImage).toHaveBeenCalledTimes(1);
+    expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
+      "Современная пергола с деревянными ламелями",
+    );
+    expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(5);
+  });
+
   it("reuses four Cyrillic IDs, preserves human tags and is idempotent", async () => {
     const names = [
       "Хэллоуин",
