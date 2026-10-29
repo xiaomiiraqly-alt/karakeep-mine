@@ -17,7 +17,7 @@ function cleanTag(value: string): string | null {
   if (
     tag.length < 2 ||
     tag.length > 70 ||
-    /[\r\n<>\[\]{}]/.test(tag) ||
+    (/[\r\n<>{}]/.test(tag) || tag.includes("[") || tag.includes("]")) ||
     /^https?:\/\//i.test(tag)
   ) {
     return null;
