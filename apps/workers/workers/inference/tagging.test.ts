@@ -33,6 +33,7 @@ vi.mock("@karakeep/shared-server", () => ({
 }));
 vi.mock("@karakeep/shared/config", () => ({
   default: {
+    embedding: { enableAutoIndexing: true },
     inference: {
       enableAutoTagging: true,
       contextLength: 4096,
@@ -55,6 +56,7 @@ vi.mock("./instagramVisual", () => ({
 }));
 
 import { runTagging } from "./tagging";
+import serverConfig from "@karakeep/shared/config";
 import type { InferenceClient } from "@karakeep/shared/inference";
 import type { DequeuedJob } from "@karakeep/shared/queueing";
 import type { ZOpenAIRequest } from "@karakeep/shared-server";
@@ -70,6 +72,7 @@ const client = (inferFromText: ReturnType<typeof vi.fn>) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  serverConfig.embedding.enableAutoIndexing = true;
   mocks.findBookmark.mockResolvedValue({
     id: "b",
     userId: "u",
@@ -188,6 +191,17 @@ describe("tagging failure safety", () => {
       "cancelled lookup",
     );
     expect(infer).not.toHaveBeenCalled();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it("skips unmaintained vector indexes but still supplies existing vocabulary", async () => {
+    serverConfig.embedding.enableAutoIndexing = false;
+    const infer = vi.fn(async (_prompt: string) => ({
+      response: '{"tags":[]}',
+    }));
+    await runTagging("b", job(), client(infer));
+    expect(mocks.vector).not.toHaveBeenCalled();
+    expect(infer.mock.calls[0][0]).toContain("Личные финансы");
+    expect(infer).toHaveBeenCalledTimes(1);
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 });

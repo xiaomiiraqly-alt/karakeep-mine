@@ -699,6 +699,11 @@ async function getPotentiallyRelevantTags(
   userId: string,
   embedding?: number[],
 ): Promise<{ tags: string[]; context: string } | null> {
+  // Do not query an index that this installation intentionally does not maintain.
+  // An explicitly supplied embedding can still query pre-existing vectors.
+  if (!serverConfig.embedding.enableAutoIndexing && !embedding?.length) {
+    return null;
+  }
   const client = await getVectorStoreClient();
   if (!client) {
     return null;
