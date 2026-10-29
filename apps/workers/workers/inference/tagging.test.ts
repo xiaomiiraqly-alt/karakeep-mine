@@ -120,7 +120,9 @@ describe("tagging failure safety", () => {
   it("does not create unchecked tags after an empty semantic response", async () => {
     const infer = vi
       .fn()
-      .mockResolvedValueOnce({ response: '{"tags":["Бюджетирование"]}' })
+      .mockResolvedValueOnce({
+        response: '{"tags":["Долги","Бюджетирование"]}',
+      })
       .mockResolvedValueOnce({ response: "" });
     await runTagging("b", job(), client(infer));
     expect(infer).toHaveBeenCalledTimes(2);
@@ -129,7 +131,9 @@ describe("tagging failure safety", () => {
   it("does not create new tags when the semantic response omits the suggestion", async () => {
     const infer = vi
       .fn()
-      .mockResolvedValueOnce({ response: '{"tags":["Бюджетирование"]}' })
+      .mockResolvedValueOnce({
+        response: '{"tags":["Долги","Бюджетирование"]}',
+      })
       .mockResolvedValueOnce({ response: '{"matches":[]}' });
     await runTagging("b", job(), client(infer));
     expect(mocks.transaction).not.toHaveBeenCalled();
