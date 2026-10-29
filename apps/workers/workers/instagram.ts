@@ -21,6 +21,7 @@ import { tryCatch } from "@karakeep/shared/tryCatch";
 import type { CrawlContext } from "./crawlerWorker";
 import { instagramCanonicalUrl } from "./utils/instagramUrls";
 import { buildInstagramReaderHtml } from "./utils/instagramReaderHtml";
+import { instagramImportTitle } from "./inference/instagramTitle";
 import { downloadPublicInstagramPost } from "./utils/instagramPublic";
 
 const MAX_MEDIA = 20;
@@ -166,6 +167,7 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
           reject: false,
         }),
       );
+      ctx.abortSignal.throwIfAborted();
       if (run.error) {
         ctx.log.warn("Instagram downloader unavailable; using normal crawler.");
         return false;
@@ -229,6 +231,7 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
     for (const [index, item] of media.entries()) {
       if (!item.mime.startsWith("video/") || frames.length >= 6) continue;
       for (const [n, second] of [0.5, 3, 8].entries()) {
+        ctx.abortSignal.throwIfAborted();
         if (frames.length >= 6) break;
         const frame = path.join(folder, "frame-" + index + "-" + n + ".jpg");
         const outcome = await tryCatch(
@@ -335,15 +338,6 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
 
     // Archive captions and original media in Reader view; links are signed
     // on each authorized read rather than persisted with expiring credentials.
-    const html = buildInstagramReaderHtml(
-      title,
-      text,
-      fresh.slice(0, media.length).map((item) => ({
-        id: item.id,
-        contentType: item.contentType ?? null,
-      })),
-    );
-
     const types = [
       AssetTypes.LINK_BANNER_IMAGE,
       AssetTypes.LINK_VIDEO,
@@ -354,43 +348,66 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       // asset. Replacing contentAssetId with null must remove that old asset.
       AssetTypes.LINK_HTML_CONTENT,
     ];
-    const previous = await db.query.assets.findMany({
-      where: and(
-        eq(assets.bookmarkId, ctx.bookmarkId),
-        inArray(assets.assetType, types),
-      ),
-    });
-    // SQLite transaction is synchronous here.
-    await db.transaction((tx) => {
-      if (previous.length) {
-        tx.delete(assets)
-          .where(
-            inArray(
-              assets.id,
-              previous.map((a) => a.id),
+    // Resolve current assets after reserving the writer slot, so concurrent
+    // reimports cannot leave duplicate galleries or delete a newer import.
+    const previous = await db.transaction(
+      (tx) => {
+        const previous = tx.query.assets
+          .findMany({
+            where: and(
+              eq(assets.bookmarkId, ctx.bookmarkId),
+              inArray(assets.assetType, types),
             ),
-          )
+          })
+          .sync();
+        const currentLink = tx.query.bookmarkLinks
+          .findFirst({
+            where: eq(bookmarkLinks.id, ctx.bookmarkId),
+            columns: { title: true },
+          })
+          .sync();
+        const preservedTitle = instagramImportTitle(currentLink?.title, title);
+        const html = buildInstagramReaderHtml(
+          preservedTitle,
+          text,
+          fresh.slice(0, media.length).map((item) => ({
+            id: item.id,
+            contentType: item.contentType ?? null,
+          })),
+        );
+
+        if (previous.length) {
+          tx.delete(assets)
+            .where(
+              inArray(
+                assets.id,
+                previous.map((a) => a.id),
+              ),
+            )
+            .run();
+        }
+        for (const item of fresh) tx.insert(assets).values(item).run();
+        tx.update(bookmarkLinks)
+          .set({
+            title: preservedTitle,
+            description: text || "Instagram media (" + media.length + ")",
+            publisher: "Instagram",
+            author: creator,
+            htmlContent: html,
+            contentAssetId: null,
+            crawledAt: new Date(),
+            crawlStatusCode: 200,
+            readerViewStatus: "readable",
+            readerViewScore: 100,
+            readerViewReasons: null,
+            readerViewClassifierVersion: null,
+          })
+          .where(eq(bookmarkLinks.id, ctx.bookmarkId))
           .run();
-      }
-      for (const item of fresh) tx.insert(assets).values(item).run();
-      tx.update(bookmarkLinks)
-        .set({
-          title,
-          description: text || "Instagram media (" + media.length + ")",
-          publisher: "Instagram",
-          author: creator,
-          htmlContent: html,
-          contentAssetId: null,
-          crawledAt: new Date(),
-          crawlStatusCode: 200,
-          readerViewStatus: "readable",
-          readerViewScore: 100,
-          readerViewReasons: null,
-          readerViewClassifierVersion: null,
-        })
-        .where(eq(bookmarkLinks.id, ctx.bookmarkId))
-        .run();
-    });
+        return previous;
+      },
+      { behavior: "immediate" },
+    );
     committed = true;
     await Promise.all(previous.map((a) => silentDeleteAsset(ctx.userId, a.id)));
     logger.info(
@@ -408,9 +425,9 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
       await Promise.all(
         storedIds.map((id) => silentDeleteAsset(ctx.userId, id)),
       );
-    } else {
-      return true;
     }
+    ctx.abortSignal.throwIfAborted();
+    if (committed) return true;
     ctx.log.warn(
       "Instagram import failed (" +
         (error instanceof Error ? error.name : "error") +

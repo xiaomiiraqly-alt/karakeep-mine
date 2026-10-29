@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { getBookmarkDomain } from "network";
 import { buildImpersonatingTRPCClient } from "trpc";
 import { z } from "zod";
@@ -38,8 +38,13 @@ import {
   isMissingSimilarityDocument,
   withTaggingDeadline,
 } from "./taggingResilience";
+import {
+  needsGeneratedTitle,
+  taggingTitleInstruction,
+  cleanBookmarkTitle,
+} from "./bookmarkTitle";
 import { getInstagramVisualContext } from "./instagramVisual";
-import { canonicalizeAITags } from "./tagVocabulary";
+import { canonicalizeAITags, matchExistingAITags } from "./tagVocabulary";
 import { tagConceptKey } from "@karakeep/shared/utils/tagConcepts";
 import {
   applySemanticTagMatches,
@@ -52,9 +57,20 @@ import {
  */
 const RELEVANT_TAG_TRUNCATE_LENGTH = 1000;
 
-const openAIResponseSchema = z.object({
-  tags: z.array(z.string()),
+const openAIResponseSchema = z.object({ tags: z.array(z.string()) });
+const titledResponseSchema = openAIResponseSchema.extend({
+  title: z.string().nullable(),
 });
+const parsedResponseSchema = openAIResponseSchema.extend({
+  title: z.string().nullable().optional(),
+});
+function taggingResponseSchema(
+  bookmark: NonNullable<Awaited<ReturnType<typeof fetchBookmark>>>,
+) {
+  return needsGeneratedTitle(bookmark)
+    ? titledResponseSchema
+    : openAIResponseSchema;
+}
 
 function parseJsonFromLLMResponse(response: string): unknown {
   const trimmedResponse = response.trim();
@@ -92,16 +108,6 @@ function parseJsonFromLLMResponse(response: string): unknown {
   }
 }
 
-function tagNormalizer() {
-  // This function needs to be in sync with the generated normalizedName column in bookmarkTags
-  function normalizeTag(tag: string) {
-    return tag.toLowerCase().replace(/[ \-_]/g, "");
-  }
-
-  return {
-    normalizeTag,
-  };
-}
 async function buildPrompt(
   bookmark: NonNullable<Awaited<ReturnType<typeof fetchBookmark>>>,
   tagStyle: ZTagStyle,
@@ -113,6 +119,8 @@ async function buildPrompt(
 ): Promise<string | null> {
   const prompts = await fetchCustomPrompts(bookmark.userId, "text");
   if (similarBookmarkContext) prompts.push(similarBookmarkContext);
+  const titleInstruction = taggingTitleInstruction(bookmark);
+  if (titleInstruction) prompts.push(titleInstruction);
   if (bookmark.link) {
     let content =
       (await Bookmark.getBookmarkPlainTextContent(
@@ -120,7 +128,7 @@ async function buildPrompt(
         bookmark.userId,
       )) ?? "";
 
-    if (!bookmark.link.description && !content) {
+    if (!bookmark.link.description && !content && !visualContext) {
       // No content to infer from; signal skip to avoid marking job as failed
       logger.info(
         `[inference] No content found for link "${bookmark.id}". Skipping tagging.`,
@@ -202,7 +210,7 @@ async function inferTagsFromImage(
     ),
     metadata.contentType,
     base64,
-    { schema: openAIResponseSchema, abortSignal },
+    { schema: taggingResponseSchema(bookmark), abortSignal },
   );
 }
 
@@ -213,6 +221,7 @@ async function fetchCustomPrompts(
   const prompts = await db.query.customPrompts.findMany({
     where: and(
       eq(customPrompts.userId, userId),
+      eq(customPrompts.enabled, true),
       inArray(customPrompts.appliesTo, ["all_tagging", appliesTo]),
     ),
     columns: {
@@ -240,11 +249,11 @@ async function replaceTagsPlaceholders(
   const tags = (await api.tags.list({})).tags;
   const tagsString = `[${tags.map((tag) => tag.name).join(", ")}]`;
   const aiTagsString = `[${tags
-    .filter((tag) => tag.numBookmarksByAttachedType.human ?? true)
+    .filter((tag) => (tag.numBookmarksByAttachedType.ai ?? 0) > 0)
     .map((tag) => tag.name)
     .join(", ")}]`;
   const userTagsString = `[${tags
-    .filter((tag) => tag.numBookmarksByAttachedType.human ?? false)
+    .filter((tag) => (tag.numBookmarksByAttachedType.human ?? 0) > 0)
     .map((tag) => tag.name)
     .join(", ")}]`;
 
@@ -295,7 +304,7 @@ async function inferTagsFromPDF(
     "inference.prompt.size": Buffer.byteLength(prompt, "utf8"),
   });
   return inferenceClient.inferFromText(prompt, {
-    schema: openAIResponseSchema,
+    schema: taggingResponseSchema(bookmark),
     abortSignal,
   });
 }
@@ -310,13 +319,25 @@ async function inferTagsFromText(
   potentialRelevantTags?: string[],
   similarBookmarkContext = "",
 ) {
-  const visualContext = await getInstagramVisualContext(
-    bookmark.link?.url,
-    bookmark.id,
-    bookmark.userId,
-    inferenceClient,
-    abortSignal,
-  );
+  let visualContext = "";
+  try {
+    visualContext = await getInstagramVisualContext(
+      bookmark.link?.url,
+      bookmark.id,
+      bookmark.userId,
+      inferenceClient,
+      abortSignal,
+      Math.min(
+        30000,
+        Math.max(1000, serverConfig.inference.jobTimeoutSec * 250),
+      ),
+    );
+  } catch (error) {
+    abortSignal.throwIfAborted();
+    logger.warn(
+      `[inference] Visual context unavailable (${error instanceof Error ? error.name : "unknown"}); continuing with saved text.`,
+    );
+  }
   const prompt = await buildPrompt(
     bookmark,
     tagStyle,
@@ -334,7 +355,7 @@ async function inferTagsFromText(
     "inference.prompt.size": Buffer.byteLength(prompt, "utf8"),
   });
   return await inferenceClient.inferFromText(prompt, {
-    schema: openAIResponseSchema,
+    schema: taggingResponseSchema(bookmark),
     abortSignal,
   });
 }
@@ -420,9 +441,10 @@ async function inferTags(
   }
 
   try {
-    let tags = openAIResponseSchema.parse(
+    const parsed = parsedResponseSchema.parse(
       parseJsonFromLLMResponse(response.response),
-    ).tags;
+    );
+    let tags = parsed.tags;
     logger.info(
       `[inference][${jobId}] Inferring tag for bookmark "${bookmark.id}" used ${response.totalTokens} tokens and inferred: ${tags}`,
     );
@@ -443,7 +465,7 @@ async function inferTags(
       "inference.total_tokens": response.totalTokens,
     });
 
-    return tags;
+    return { tags, title: cleanBookmarkTitle(parsed.title) };
   } catch (e) {
     const responseSneak = response.response.substring(0, 20);
     throw new Error(
@@ -485,18 +507,21 @@ async function reuseExistingSemanticTags(
   if (!candidates.length) return normalized;
 
   try {
-    const response = await withTaggingDeadline(abortSignal, 5000, (signal) =>
-      client.inferFromText(buildSemanticReusePrompt(newTags, candidates), {
-        schema: z.object({
-          matches: z.array(
-            z.object({
-              suggested: z.string(),
-              existing: z.string().nullable(),
-            }),
-          ),
+    const response = await withTaggingDeadline(
+      abortSignal,
+      Math.max(1000, serverConfig.inference.jobTimeoutSec * 1000 * 0.35),
+      (signal) =>
+        client.inferFromText(buildSemanticReusePrompt(newTags, candidates), {
+          schema: z.object({
+            matches: z.array(
+              z.object({
+                suggested: z.string(),
+                existing: z.string().nullable(),
+              }),
+            ),
+          }),
+          abortSignal: signal,
         }),
-        abortSignal: signal,
-      }),
     );
     const parsed = z
       .object({
@@ -524,7 +549,7 @@ async function reuseExistingSemanticTags(
       logger.warn(
         "[inference] Incomplete semantic comparison; preserving saved tags.",
       );
-      return [];
+      throw new Error("Incomplete semantic tag comparison");
     }
     const preferred = applySemanticTagMatches(
       normalized,
@@ -537,7 +562,10 @@ async function reuseExistingSemanticTags(
     logger.warn(
       `[inference] Could not compare new tags against existing vocabulary: ${error instanceof Error ? error.name : "unknown"}. Preserving saved tags; deferring unchecked new tags.`,
     );
-    return [];
+    throw new Error(
+      "Semantic tag comparison failed; saved tags were preserved",
+      { cause: error },
+    );
   }
 }
 
@@ -555,13 +583,13 @@ async function connectTags(
   // taking a WAL snapshot that another connection could invalidate.
   const res = await db.transaction(
     (tx) => {
-      const existingNames = tx.query.bookmarkTags
+      const existingTags = tx.query.bookmarkTags
         .findMany({
           where: eq(bookmarkTags.userId, userId),
-          columns: { name: true },
+          columns: { id: true, name: true },
         })
-        .sync()
-        .map((tag) => tag.name);
+        .sync();
+      const existingNames = existingTags.map((tag) => tag.name);
       const resolvedTags = canonicalizeAITags(
         inferredTags,
         existingNames,
@@ -570,38 +598,12 @@ async function connectTags(
 
       if (!resolvedTags.length) return { detachedTags: [], attachedTags: [] };
 
-      // Attempt to match existing tags with the normalized suggestions
-      const { matchedTagIds, notFoundTagNames } = (() => {
-        const { normalizeTag } = tagNormalizer();
-        const normalizedInferredTags = resolvedTags.map((t) => ({
-          originalTag: t,
-          normalizedTag: normalizeTag(t),
-        }));
-
-        const matchedTags = tx.query.bookmarkTags
-          .findMany({
-            where: and(
-              eq(bookmarkTags.userId, userId),
-              inArray(
-                bookmarkTags.normalizedName,
-                normalizedInferredTags.map((t) => t.normalizedTag),
-              ),
-            ),
-          })
-          .sync();
-
-        const matchedTagIds = matchedTags.map((r) => r.id);
-        const notFoundTagNames = normalizedInferredTags
-          .filter(
-            (t) =>
-              !matchedTags.some(
-                (mt) => normalizeTag(mt.name) === t.normalizedTag,
-              ),
-          )
-          .map((t) => t.originalTag);
-
-        return { matchedTagIds, notFoundTagNames };
-      })();
+      // SQLite lower() is ASCII-only. Match the user's vocabulary in JavaScript
+      // so Cyrillic and other Unicode names resolve to their existing IDs.
+      const { matchedTagIds, notFoundTagNames } = matchExistingAITags(
+        resolvedTags,
+        existingTags,
+      );
 
       // Create tags that didn't exist previously
       let newTagIds: string[] = [];
@@ -620,6 +622,9 @@ async function connectTags(
           .map((t) => t.id);
       }
 
+      const allTagIds = new Set([...matchedTagIds, ...newTagIds]);
+      if (!allTagIds.size) return { detachedTags: [], attachedTags: [] };
+
       // Delete old AI tags
       const detachedTags = tx
         .delete(tagsOnBookmarks)
@@ -627,12 +632,11 @@ async function connectTags(
           and(
             eq(tagsOnBookmarks.attachedBy, "ai"),
             eq(tagsOnBookmarks.bookmarkId, bookmarkId),
+            notInArray(tagsOnBookmarks.tagId, [...allTagIds]),
           ),
         )
         .returning()
         .all();
-
-      const allTagIds = new Set([...matchedTagIds, ...newTagIds]);
 
       // Attach new ones
       let attachedTags: { tagId: string; bookmarkId: string }[] = [];
@@ -656,6 +660,9 @@ async function connectTags(
     { behavior: "immediate" },
   );
 
+  logger.info(
+    `[inference] Updated tags for bookmark "${bookmarkId}": attached ${res.attachedTags.length}, detached ${res.detachedTags.length}.`,
+  );
   await RuleEngine.triggerOnEvent(userId, bookmarkId, [
     ...res.detachedTags.map((t) => ({
       type: "tagRemoved" as const,
@@ -854,6 +861,12 @@ export async function runTagging(
       columns: { name: true },
     });
     curatedTagNames = tags.map((t) => t.name);
+    if (!curatedTagNames.length) {
+      logger.info(
+        `[inference][${jobId}] No selected curated tags remain; preserving saved tags.`,
+      );
+      return;
+    }
   } else {
     // If no curated tags are configured, try to find some potentially relevant tags
     try {
@@ -913,9 +926,9 @@ export async function runTagging(
     `[inference][${jobId}] Starting an inference job for bookmark with id "${bookmark.id}"`,
   );
 
-  const tags = await withTaggingDeadline(
+  const result = await withTaggingDeadline(
     job.abortSignal,
-    Math.max(1000, serverConfig.inference.jobTimeoutSec * 1000 - 10000),
+    Math.max(1000, serverConfig.inference.jobTimeoutSec * 1000 * 0.6),
     (signal) =>
       inferTags(
         jobId,
@@ -930,7 +943,34 @@ export async function runTagging(
       ),
   );
 
-  if (tags === null || tags.length === 0) {
+  job.abortSignal.throwIfAborted();
+  if (result?.title && needsGeneratedTitle(bookmark)) {
+    const changed = await db
+      .update(bookmarks)
+      .set({ title: result.title, modifiedAt: new Date() })
+      .where(
+        and(
+          eq(bookmarks.id, bookmarkId),
+          bookmark.title == null
+            ? isNull(bookmarks.title)
+            : eq(bookmarks.title, bookmark.title),
+          ...(bookmark.modifiedAt
+            ? [eq(bookmarks.modifiedAt, bookmark.modifiedAt)]
+            : []),
+        ),
+      )
+      .returning({ id: bookmarks.id });
+    if (changed.length) {
+      logger.info(
+        `[inference][${jobId}] Generated bookmark title for "${bookmarkId}".`,
+      );
+      await triggerSearchReindex(bookmarkId, {
+        priority: job.priority,
+        groupId: bookmark.userId,
+      });
+    }
+  }
+  if (result === null || result.tags.length === 0) {
     logger.info(
       `[inference][${jobId}] Skipping tagging for bookmark "${bookmark.id}" due to missing content or empty tags; preserving existing tags.`,
     );
@@ -938,7 +978,7 @@ export async function runTagging(
   }
 
   const preferredTags = await reuseExistingSemanticTags(
-    tags,
+    result.tags,
     bookmark.userId,
     inferenceClient,
     job.abortSignal,

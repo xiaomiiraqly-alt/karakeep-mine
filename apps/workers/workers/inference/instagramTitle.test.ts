@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildInstagramTitlePrompt,
+  instagramImportTitle,
   cleanInstagramTitle,
   isGenericInstagramTitle,
   updateInstagramReaderHeading,
@@ -64,5 +65,14 @@ describe("Instagram AI titles", () => {
         "New title",
       ),
     ).toBe("<article><p>no heading</p></article>");
+  });
+  it("preserves a descriptive title on reimport but replaces generic placeholders", () => {
+    expect(
+      instagramImportTitle("Хэллоуин в Севастополе", "Instagram — @tut.sev"),
+    ).toBe("Хэллоуин в Севастополе");
+    expect(instagramImportTitle("Instagram — @old", "Instagram — @new")).toBe(
+      "Instagram — @new",
+    );
+    expect(instagramImportTitle(null, "Instagram post")).toBe("Instagram post");
   });
 });

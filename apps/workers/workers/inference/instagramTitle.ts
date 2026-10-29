@@ -11,6 +11,14 @@ export function isGenericInstagramTitle(value: string | null): boolean {
   );
 }
 
+/** Re-crawling must not reset a descriptive AI/user title to the importer placeholder. */
+export function instagramImportTitle(
+  current: string | null | undefined,
+  fallback: string,
+): string {
+  return current && !isGenericInstagramTitle(current) ? current : fallback;
+}
+
 /**
  * A separate, short text inference is cheaper than rerunning image inference.
  * The summary already includes caption and visual observations from saved media.

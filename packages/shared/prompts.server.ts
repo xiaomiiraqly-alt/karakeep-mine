@@ -56,16 +56,30 @@ export async function buildTextPrompt(
   potentialRelevantTags?: string[],
 ): Promise<string> {
   content = preprocessContent(content);
-  const promptTemplate = constructTextTaggingPrompt(
-    lang,
-    customPrompts,
-    "",
-    tagStyle,
-    curatedTags,
-    potentialRelevantTags,
+  // Optional vocabulary hints must not consume all of the saved content.
+  let hints = potentialRelevantTags;
+  let available: number;
+  const reserve = Math.min(
+    128,
+    await calculateNumTokens(content.slice(0, 512)),
   );
-  const promptSize = await calculateNumTokens(promptTemplate);
-  const available = Math.max(0, contextLength - promptSize);
+  while (true) {
+    const template = constructTextTaggingPrompt(
+      lang,
+      customPrompts,
+      "",
+      tagStyle,
+      curatedTags,
+      hints,
+    );
+    available = contextLength - (await calculateNumTokens(template));
+    if (available >= reserve && available >= 0) break;
+    if (!hints?.length)
+      throw new Error(
+        "Tagging instructions exceed the context budget; reduce custom prompts or increase INFERENCE_CONTEXT_LENGTH",
+      );
+    hints = hints.slice(0, Math.floor(hints.length / 2));
+  }
   const truncatedContent =
     available === 0 ? "" : await truncateContent(content, available);
   return constructTextTaggingPrompt(
@@ -74,7 +88,7 @@ export async function buildTextPrompt(
     truncatedContent,
     tagStyle,
     curatedTags,
-    potentialRelevantTags,
+    hints,
   );
 }
 
@@ -87,7 +101,11 @@ export async function buildSummaryPrompt(
   content = preprocessContent(content);
   const promptTemplate = constructSummaryPrompt(lang, customPrompts, "");
   const promptSize = await calculateNumTokens(promptTemplate);
-  const available = Math.max(0, contextLength - promptSize);
+  const available = contextLength - promptSize;
+  if (available <= 0 && content.trim())
+    throw new Error(
+      "Summary instructions exceed the context budget; reduce custom prompts or increase INFERENCE_CONTEXT_LENGTH",
+    );
   const truncatedContent =
     available === 0 ? "" : await truncateContent(content, available);
   return constructSummaryPrompt(lang, customPrompts, truncatedContent);

@@ -22,6 +22,7 @@ import { DequeuedJob } from "@karakeep/shared/queueing";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 
+import { withTaggingDeadline } from "./taggingResilience";
 import { getInstagramVisualContext } from "./instagramVisual";
 import {
   buildInstagramTitlePrompt,
@@ -147,6 +148,7 @@ URL: ${link.url ?? ""}
     bookmarkData.userId,
     inferenceClient,
     job.abortSignal,
+    Math.min(30000, Math.max(1000, serverConfig.inference.jobTimeoutSec * 250)),
   );
   if (visualContext)
     textToSummarize += "\nVisual observations:\n" + visualContext;
@@ -161,6 +163,7 @@ URL: ${link.url ?? ""}
   const prompts = await db.query.customPrompts.findMany({
     where: and(
       eq(customPrompts.userId, bookmarkData.userId),
+      eq(customPrompts.enabled, true),
       eq(customPrompts.appliesTo, "summary"),
     ),
     columns: {
@@ -188,7 +191,8 @@ URL: ${link.url ?? ""}
     abortSignal: job.abortSignal,
   });
 
-  if (!summaryResult.response) {
+  job.abortSignal.throwIfAborted();
+  if (!summaryResult.response?.trim()) {
     throw new Error(
       `[inference][${jobId}] Failed to summarize bookmark ${bookmarkId}, empty response from inference client.`,
     );
@@ -222,19 +226,28 @@ URL: ${link.url ?? ""}
     isGenericInstagramTitle(instagramLink.title)
   ) {
     try {
-      const proposed = await inferenceClient.inferFromText(
-        buildInstagramTitlePrompt({
-          language:
-            userSettings?.inferredTagLang ??
-            serverConfig.inference.inferredTagLang,
-          caption: instagramLink.description ?? "",
-          summary: summaryResult.response,
-          visualContext,
-        }),
-        { schema: null, abortSignal: job.abortSignal },
+      const proposed = await withTaggingDeadline(
+        job.abortSignal,
+        Math.min(
+          15000,
+          Math.max(1000, serverConfig.inference.jobTimeoutSec * 150),
+        ),
+        (signal) =>
+          inferenceClient.inferFromText(
+            buildInstagramTitlePrompt({
+              language:
+                userSettings?.inferredTagLang ??
+                serverConfig.inference.inferredTagLang,
+              caption: instagramLink.description ?? "",
+              summary: summaryResult.response,
+              visualContext,
+            }),
+            { schema: null, abortSignal: signal },
+          ),
       );
       const title = cleanInstagramTitle(proposed.response ?? "");
       if (title) {
+        job.abortSignal.throwIfAborted();
         // Compare-and-set: do not replace an intervening re-crawl or manual
         // title edit while the model was generating the new title.
         const condition =

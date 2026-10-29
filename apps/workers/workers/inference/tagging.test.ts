@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findBookmark: vi.fn(),
@@ -7,18 +7,24 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   vector: vi.fn(),
   reindex: vi.fn(),
+  update: vi.fn(),
+  prompts: vi.fn(),
+  tagsApi: vi.fn(),
 }));
 vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
-vi.mock("trpc", () => ({ buildImpersonatingTRPCClient: vi.fn() }));
+vi.mock("trpc", () => ({
+  buildImpersonatingTRPCClient: async () => ({ tags: { list: mocks.tagsApi } }),
+}));
 vi.mock("@karakeep/db", () => ({
   db: {
     query: {
       bookmarks: { findFirst: mocks.findBookmark },
       users: { findFirst: mocks.findUser },
       bookmarkTags: { findMany: mocks.findTags },
-      customPrompts: { findMany: vi.fn(async () => []) },
+      customPrompts: { findMany: mocks.prompts },
     },
     transaction: mocks.transaction,
+    update: mocks.update,
   },
 }));
 vi.mock("@karakeep/shared/vectorStore", () => ({
@@ -45,7 +51,9 @@ vi.mock("@karakeep/shared/config", () => ({
 vi.mock("@karakeep/trpc/lib/ruleEngine", () => ({
   RuleEngine: { triggerOnEvent: vi.fn() },
 }));
-vi.mock("@karakeep/trpc/models/bookmarks", () => ({ Bookmark: {} }));
+vi.mock("@karakeep/trpc/models/bookmarks", () => ({
+  Bookmark: { getBookmarkPlainTextContent: vi.fn(async () => "") },
+}));
 vi.mock("@karakeep/trpc/models/webhooks.service", () => ({
   WebhooksService: class {
     triggerWebhook = vi.fn();
@@ -70,8 +78,14 @@ const job = () =>
 const client = (inferFromText: ReturnType<typeof vi.fn>) =>
   ({ inferFromText }) as unknown as InferenceClient;
 
+afterEach(() => vi.useRealTimers());
+
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.prompts.mockResolvedValue([]);
+  mocks.update.mockReturnValue({
+    set: () => ({ where: () => ({ returning: async () => [{ id: "b" }] }) }),
+  });
   serverConfig.embedding.enableAutoIndexing = true;
   mocks.findBookmark.mockResolvedValue({
     id: "b",
@@ -127,7 +141,9 @@ describe("tagging failure safety", () => {
         response: '{"tags":["Долги","Бюджетирование"]}',
       })
       .mockResolvedValueOnce({ response: "" });
-    await runTagging("b", job(), client(infer));
+    await expect(runTagging("b", job(), client(infer))).rejects.toThrow(
+      "Semantic tag comparison failed",
+    );
     expect(infer).toHaveBeenCalledTimes(2);
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
@@ -138,7 +154,9 @@ describe("tagging failure safety", () => {
         response: '{"tags":["Долги","Бюджетирование"]}',
       })
       .mockResolvedValueOnce({ response: '{"matches":[]}' });
-    await runTagging("b", job(), client(infer));
+    await expect(runTagging("b", job(), client(infer))).rejects.toThrow(
+      "Semantic tag comparison failed",
+    );
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
   it("propagates invalid primary responses without overwriting old tags", async () => {
@@ -203,5 +221,98 @@ describe("tagging failure safety", () => {
     expect(infer.mock.calls[0][0]).toContain("Личные финансы");
     expect(infer).toHaveBeenCalledTimes(1);
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it("saves a factual note title from the tagging response even when no tags fit", async () => {
+    const infer = vi.fn(async (prompt: string) => {
+      expect(prompt).toContain('"title" field');
+      return {
+        response: '{"tags":[],"title":"Погашение задолженности по кредитам"}',
+      };
+    });
+    await runTagging("b", job(), client(infer));
+    expect(infer).toHaveBeenCalledTimes(1);
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.reindex).toHaveBeenCalledTimes(1);
+  });
+  it("does not overwrite a custom note title returned alongside tags", async () => {
+    mocks.findBookmark.mockResolvedValue({
+      id: "b",
+      userId: "u",
+      type: "text",
+      title: "Мой заголовок",
+      text: { text: "Долг" },
+    });
+    await runTagging(
+      "b",
+      job(),
+      client(
+        vi.fn(async () => ({
+          response: '{"tags":[],"title":"Новый заголовок заметки"}',
+        })),
+      ),
+    );
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("allows a valid semantic comparison to take longer than five seconds", async () => {
+    mocks.findTags.mockResolvedValue([{ name: "Погашение долгов" }]);
+    mocks.transaction.mockResolvedValueOnce({
+      detachedTags: [],
+      attachedTags: [],
+    });
+    const infer = vi
+      .fn()
+      .mockResolvedValueOnce({
+        response: '{"tags":["Погашение задолженности"]}',
+      })
+      .mockImplementationOnce(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 6000));
+        return {
+          response:
+            '{"matches":[{"suggested":"Погашение задолженности","existing":"Погашение долгов"}]}',
+        };
+      });
+    await runTagging("b", job(), client(infer));
+    expect(infer).toHaveBeenCalledTimes(2);
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.reindex).toHaveBeenCalledTimes(1);
+  }, 10000);
+  it("generates an Instagram title during tagging without a summary job", async () => {
+    mocks.findBookmark.mockResolvedValue({
+      id: "b",
+      userId: "u",
+      type: "link",
+      title: null,
+      link: {
+        url: "https://www.instagram.com/p/abc/",
+        title: "Instagram — @tut.sev",
+        description: "Куда идти на Хэллоуин в Севастополе",
+      },
+    });
+    const infer = vi.fn(async (_prompt: string) => ({
+      response: '{"tags":[],"title":"Хэллоуин в Севастополе: куда пойти"}',
+    }));
+    await runTagging("b", job(), client(infer));
+    expect(infer.mock.calls[0][0]).toContain('"title" field');
+    expect(infer).toHaveBeenCalledTimes(1);
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+  });
+  it("expands AI and human placeholders from their own attachment counters", async () => {
+    mocks.prompts.mockResolvedValue([{ text: "AI=$aiTags; HUMAN=$userTags" }]);
+    mocks.tagsApi.mockResolvedValue({
+      tags: [
+        {
+          name: "Автоматический",
+          numBookmarksByAttachedType: { ai: 2, human: 0 },
+        },
+        { name: "Ручной", numBookmarksByAttachedType: { ai: 0, human: 3 } },
+      ],
+    });
+    const infer = vi.fn(async (prompt: string) => {
+      expect(prompt).toContain("AI=[Автоматический]; HUMAN=[Ручной]");
+      return { response: '{"tags":[]}' };
+    });
+    await runTagging("b", job(), client(infer));
+    expect(infer).toHaveBeenCalledTimes(1);
   });
 });
