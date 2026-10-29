@@ -149,14 +149,21 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
           ctx.abortSignal,
         );
         files = await mediaFiles(folder);
-        ctx.log.info("Extracted " + count + " Instagram media items from embedded page data.");
+        ctx.log.info(
+          "Extracted " +
+            count +
+            " Instagram media items from embedded page data.",
+        );
       } catch (error) {
         ctx.abortSignal.throwIfAborted();
-        const reason = error instanceof Error ? error.message : "Unknown HTML extraction error";
+        const reason =
+          error instanceof Error
+            ? error.message
+            : "Unknown HTML extraction error";
         ctx.log.warn(
           "Instagram embedded media unavailable (" +
-          reason.replace(/https?:\/\/\S+/g, "[URL]").slice(0, 200) +
-          "); trying gallery-dl.",
+            reason.replace(/https?:\/\/\S+/g, "[URL]").slice(0, 200) +
+            "); trying gallery-dl.",
         );
       }
     }
