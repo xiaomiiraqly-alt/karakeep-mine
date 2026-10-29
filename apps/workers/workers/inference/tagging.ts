@@ -203,6 +203,7 @@ async function inferTagsFromImage(
       [
         ...(await fetchCustomPrompts(bookmark.userId, "images")),
         similarBookmarkContext,
+        taggingTitleInstruction(bookmark),
       ],
       tagStyle,
       curatedTags,
@@ -292,6 +293,7 @@ async function inferTagsFromPDF(
     [
       ...(await fetchCustomPrompts(bookmark.userId, "text")),
       similarBookmarkContext,
+      taggingTitleInstruction(bookmark),
     ],
     `Content: ${bookmark.asset.content}`,
     serverConfig.inference.contextLength,
@@ -987,6 +989,15 @@ export async function runTagging(
   );
   job.abortSignal.throwIfAborted();
   if (!preferredTags.length) return;
+  // Semantic reuse and spelling normalization may collapse model proposals.
+  // Do not replace a useful existing tag set with fewer than five distinct
+  // concepts: retry inference rather than inventing unrelated filler labels.
+  const distinctConcepts = new Set(preferredTags.map(tagConceptKey));
+  if (distinctConcepts.size < 5 && !curatedTagNames?.length) {
+    throw new Error(
+      "AI provided fewer than five distinct content-based tags; saved tags preserved for retry",
+    );
+  }
   await connectTags(
     bookmarkId,
     preferredTags,
