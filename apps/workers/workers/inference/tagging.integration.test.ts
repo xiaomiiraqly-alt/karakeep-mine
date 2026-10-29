@@ -43,7 +43,7 @@ vi.mock("@karakeep/shared-server", () => ({
   setSpanAttributes: vi.fn(),
   triggerSearchReindex: vi.fn(),
   ASSET_TYPES: {},
-  readAsset: vi.fn(),
+  readAsset: state.readAsset,
 }));
 vi.mock("@karakeep/trpc/lib/ruleEngine", () => ({
   RuleEngine: { triggerOnEvent: state.events },
