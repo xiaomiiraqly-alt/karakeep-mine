@@ -1,0 +1,32 @@
+name: Format Semantic Tag Reuse
+on:
+  push:
+    branches: [feature/canonical-ai-tags]
+permissions:
+  contents: write
+concurrency:
+  group: format-semantic-tags-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  format:
+    if: "!contains(github.event.head_commit.message, 'style(tags): format semantic tag reuse')"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./tooling/github/setup
+      - name: Format semantic tag sources
+        run: |
+          pnpm exec oxfmt --write \
+            apps/workers/workers/inference/tagging.ts \
+            apps/workers/workers/inference/semanticTagReuse.ts \
+            apps/workers/workers/inference/semanticTagReuse.test.ts
+      - name: Commit normalized source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/workers/workers/inference/tagging.ts apps/workers/workers/inference/semanticTagReuse.ts apps/workers/workers/inference/semanticTagReuse.test.ts
+          if ! git diff --cached --quiet; then
+            HUSKY=0 git -c core.hooksPath=/dev/null commit -m "style(tags): format semantic tag reuse"
+            git pull --rebase origin feature/canonical-ai-tags
+            git push origin HEAD:feature/canonical-ai-tags
+          fi
