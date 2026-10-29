@@ -51,13 +51,10 @@ export async function getInstagramVisualContext(
   const frames = candidates
     .filter((a) => a.assetType === AssetTypes.LINK_INSTAGRAM_FRAME)
     .sort(sortByFilename);
-  // Give videos a few slots even when a post contains several pictures.
-  const selected = [
-    ...photos.slice(0, 3),
-    ...frames.slice(0, 3),
-    ...photos.slice(3),
-    ...frames.slice(3),
-  ].slice(0, 6);
+  // Include the complete saved carousel (up to 20 slides) and all Reel frames,
+  // not just the first six assets. For large galleries analyze contact sheets of
+  // four slides so the limited AI window can cover the full publication.
+  const selected = [...photos.slice(0, 20), ...frames.slice(0, 6)];
   const cacheKey = JSON.stringify([
     userId,
     bookmarkId,
@@ -66,22 +63,52 @@ export async function getInstagramVisualContext(
   const cached = observationCache.get(cacheKey);
   if (cached) return cached;
   const observations: string[] = [];
-  for (const [index, candidate] of selected.entries()) {
+  const groupSize = selected.length > 6 ? 4 : 1;
+  for (let offset = 0; offset < selected.length; offset += groupSize) {
     abortSignal.throwIfAborted();
     if (Date.now() >= deadline) break;
+    const group = selected.slice(offset, offset + groupSize);
     try {
-      const { asset } = await readAsset({ userId, assetId: candidate.id });
-      if (asset.length > 25 * 1024 * 1024) continue;
-      const jpeg = await sharp(asset)
-        .rotate()
-        .resize({
-          width: 1024,
-          height: 1024,
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .jpeg({ quality: 77 })
-        .toBuffer();
+      const tiles: Buffer[] = [];
+      for (const candidate of group) {
+        abortSignal.throwIfAborted();
+        const { asset } = await readAsset({ userId, assetId: candidate.id });
+        if (asset.length > 25 * 1024 * 1024) {
+          throw new Error("Image exceeds vision limit");
+        }
+        const jpeg = await sharp(asset)
+          .rotate()
+          .resize({
+            width: groupSize === 1 ? 1024 : 700,
+            height: groupSize === 1 ? 1024 : 700,
+            fit: groupSize === 1 ? "inside" : "contain",
+            background: "#ffffff",
+            withoutEnlargement: groupSize === 1,
+          })
+          .jpeg({ quality: 77 })
+          .toBuffer();
+        tiles.push(jpeg);
+      }
+      const image =
+        groupSize === 1
+          ? tiles[0]
+          : await sharp({
+              create: {
+                width: 1400,
+                height: 1400,
+                channels: 3,
+                background: "#ffffff",
+              },
+            })
+              .composite(
+                tiles.map((input, index) => ({
+                  input,
+                  left: (index % 2) * 700,
+                  top: Math.floor(index / 2) * 700,
+                })),
+              )
+              .jpeg({ quality: 75 })
+              .toBuffer();
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
       const response = await withTaggingDeadline(
@@ -89,25 +116,32 @@ export async function getInstagramVisualContext(
         remaining,
         (signal) =>
           client.inferFromImage(
-            "Describe only what is visibly present in this Instagram photo or video frame. " +
-              "Mention readable text. Do not guess identities or invent events. " +
-              "Reply concisely in plain text.",
+            groupSize === 1
+              ? "Describe only what is visibly present in this Instagram photo or video frame. Mention readable text. Do not guess identities or invent events. Reply concisely in plain text."
+              : "This is a 2x2 grid of consecutive Instagram photos or video frames (top-left, top-right, bottom-left, bottom-right). Describe the content of EACH occupied tile separately, including readable text, objects, actions and the actual subject. Do not guess identities or invent events. Reply concisely.",
             "image/jpeg",
-            jpeg.toString("base64"),
+            image.toString("base64"),
             { schema: null, abortSignal: signal },
           ),
       );
       if (response.response?.trim()) {
         observations.push(
-          "Visual " + (index + 1) + ": " + response.response.slice(0, 1200),
+          "Visual slides " +
+            (offset + 1) +
+            "-" +
+            (offset + group.length) +
+            ": " +
+            response.response.slice(0, 3000),
         );
       }
     } catch (error) {
       if (abortSignal.aborted) throw error;
       if (error instanceof Error && error.name === "TimeoutError") break;
       logger.warn(
-        "[Instagram Vision] Failed to analyze frame " +
-          (index + 1) +
+        "[Instagram Vision] Failed to analyze slides " +
+          (offset + 1) +
+          "-" +
+          (offset + group.length) +
           ": " +
           (error instanceof Error ? error.name : "unknown"),
       );

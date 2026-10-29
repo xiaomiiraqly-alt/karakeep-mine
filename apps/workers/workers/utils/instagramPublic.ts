@@ -1,6 +1,8 @@
 /** Public Instagram media fallback. No user login, cookies or credentials are stored. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { fetchWithProxy } from "network";
+import type { RunProxyConfig } from "network";
 
 const DOC_ID = "27128499623469141";
 const APP_ID = "936619743392459";
@@ -63,9 +65,18 @@ export function parsePublicInstagramPost(
   const post = object(array(webInfo?.items)[0]);
   if (!post) return null;
 
-  const candidates = array(post.carousel_media).length
-    ? array(post.carousel_media)
-    : [post];
+  const slides = array(post.carousel_media);
+  // Some Instagram responses expose only the cover of a carousel. Never
+  // silently declare that partial response a successful full-post archive.
+  const declaredCount = post.carousel_media_count;
+  if (
+    typeof declaredCount === "number" &&
+    Number.isInteger(declaredCount) &&
+    declaredCount > 1 &&
+    slides.length !== declaredCount
+  )
+    return null;
+  const candidates = slides.length ? slides : [post];
   const media: PublicInstagramMedia[] = [];
   for (const entry of candidates) {
     const item = object(entry);
@@ -144,34 +155,59 @@ export async function fetchPublicInstagramPost(
     redirect: "manual",
     signal: signalWithTimeout(signal, 15_000),
   });
-  const csrf = (home.headers.getSetCookie?.() ?? [])
-    .map((cookie) => /^csrftoken=([^;]+)/.exec(cookie)?.[1])
-    .find(Boolean);
+  // An anonymous browser session includes more than csrftoken. Forward only
+  // Instagram's non-authentication cookies; stripping mid/ig_did can cause
+  // the GraphQL endpoint to reject a request that a browser would accept.
+  const allowedCookies = new Set(["csrftoken", "mid", "ig_did", "datr", "wd"]);
+  const cookies = (
+    home.headers.getSetCookie?.() ?? [home.headers.get("set-cookie") ?? ""]
+  )
+    .map((header) => /^([a-zA-Z0-9_]+)=([^;]*)/.exec(header))
+    .filter((match): match is RegExpExecArray => Boolean(match))
+    .filter((match) => allowedCookies.has(match[1]))
+    .map((match) => match[1] + "=" + match[2]);
+  const csrf = cookies
+    .find((cookie) => cookie.startsWith("csrftoken="))
+    ?.slice("csrftoken=".length);
 
   await home.body?.cancel();
-
+  signal.throwIfAborted();
   const headers: Record<string, string> = {
     "User-Agent": USER_AGENT,
     "X-IG-App-ID": APP_ID,
     "X-CSRFToken": csrf ?? "",
     "Content-Type": "application/x-www-form-urlencoded",
-    Referer: "https://www.instagram.com/",
+    Accept: "application/json",
+    Origin: "https://www.instagram.com",
+    Referer: "https://www.instagram.com/p/" + shortcode + "/",
   };
-  if (csrf) headers.Cookie = "csrftoken=" + csrf;
+  if (cookies.length) headers.Cookie = cookies.join("; ");
 
-  const result = await fetch("https://www.instagram.com/graphql/query", {
+  const variables = JSON.stringify({
+    shortcode,
+    __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false,
+  });
+  const postResponse = await fetch("https://www.instagram.com/graphql/query", {
     method: "POST",
     headers,
     redirect: "manual",
-    body: new URLSearchParams({
-      doc_id: DOC_ID,
-      variables: JSON.stringify({
-        shortcode,
-        __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false,
-      }),
-    }),
+    body: new URLSearchParams({ doc_id: DOC_ID, variables }),
     signal: signalWithTimeout(signal, 20_000),
   });
+  let result = postResponse;
+  if (postResponse.status === 401 || postResponse.status === 403) {
+    // Some anonymous Instagram gateways accept the same public document via
+    // GET but reject POST. Try once, without forwarding any user credentials.
+    await postResponse.body?.cancel();
+    signal.throwIfAborted();
+    const query = new URLSearchParams({ doc_id: DOC_ID, variables });
+    result = await fetch("https://www.instagram.com/graphql/query/?" + query, {
+      method: "GET",
+      headers,
+      redirect: "manual",
+      signal: signalWithTimeout(signal, 20_000),
+    });
+  }
   if (!result.ok) {
     await result.body?.cancel();
     throw new Error("Instagram metadata HTTP " + result.status);
@@ -179,8 +215,100 @@ export async function fetchPublicInstagramPost(
   const raw = await requestTextLimited(result, 3_000_000);
   const parsed: unknown = JSON.parse(raw);
   const post = parsePublicInstagramPost(parsed);
-  if (!post) throw new Error("No public Instagram carousel in API response");
+  if (!post)
+    throw new Error("Incomplete or unavailable Instagram media metadata");
   return post;
+}
+
+/**
+ * Instagram can embed full media JSON into a browser-navigation HTML response,
+ * even when anonymous GraphQL responds 401. Extract data only from the exact
+ * post shortcode, never from a login shell or unrelated recommended post.
+ */
+export function parseEmbeddedInstagramPost(
+  html: string,
+  shortcode: string,
+): PublicInstagramPost | null {
+  const scripts = html.matchAll(
+    /<script\b(?=[^>]*\bdata-sjs\b)(?=[^>]*\btype=["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  for (const [, source] of scripts) {
+    if (!source.includes('"media_type"') || !source.includes(shortcode))
+      continue;
+    let root: unknown;
+    try {
+      root = JSON.parse(source);
+    } catch {
+      continue;
+    }
+    const pending = [root];
+    let inspected = 0;
+    while (pending.length && inspected++ < 50000) {
+      const item = pending.pop();
+      const record = object(item);
+      if (!record) {
+        if (Array.isArray(item)) pending.push(...item);
+        continue;
+      }
+      if (
+        (record.code === shortcode || record.shortcode === shortcode) &&
+        typeof record.media_type === "number"
+      ) {
+        // Reuse the same validation for allowed CDN URLs, carousel length,
+        // caption and author as the GraphQL route.
+        const parsed = parsePublicInstagramPost({
+          data: {
+            xdt_api__v1__media__shortcode__web_info: {
+              items: [record],
+            },
+          },
+        });
+        if (parsed) return parsed;
+      }
+      pending.push(...Object.values(record));
+    }
+  }
+  return null;
+}
+
+/** Browser navigation fallback, with the same selected proxy as the crawler. */
+export async function fetchEmbeddedInstagramPost(
+  url: string,
+  shortcode: string,
+  signal: AbortSignal,
+  runProxy: RunProxyConfig,
+): Promise<PublicInstagramPost> {
+  const response = await fetchWithProxy(
+    url,
+    {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Linux"',
+      },
+      size: 8_000_000,
+      signal: signalWithTimeout(signal, 20_000),
+    },
+    runProxy,
+  );
+  if (!response.ok) {
+    response.body?.resume();
+    throw new Error("Instagram browser page HTTP " + response.status);
+  }
+  const html = await response.text();
+  const result = parseEmbeddedInstagramPost(html, shortcode);
+  if (!result)
+    throw new Error("Instagram page contains no verified post media");
+  return result;
 }
 
 /** Stream media directly to disk and clean incomplete batches on failure. */
@@ -192,6 +320,23 @@ export async function downloadPublicInstagramPost(
   signal: AbortSignal,
 ): Promise<number> {
   const post = await fetchPublicInstagramPost(shortcode, signal);
+  return downloadInstagramMediaBatch(
+    post,
+    folder,
+    fileLimit,
+    batchLimit,
+    signal,
+  );
+}
+
+/** The HTML and GraphQL extraction paths share one validated CDN downloader. */
+export async function downloadInstagramMediaBatch(
+  post: PublicInstagramPost,
+  folder: string,
+  fileLimit: number,
+  batchLimit: number,
+  signal: AbortSignal,
+): Promise<number> {
   const written: string[] = [];
   let total = 0;
   try {

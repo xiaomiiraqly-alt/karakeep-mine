@@ -22,7 +22,11 @@ import type { CrawlContext } from "./crawlerWorker";
 import { instagramCanonicalUrl } from "./utils/instagramUrls";
 import { buildInstagramReaderHtml } from "./utils/instagramReaderHtml";
 import { instagramImportTitle } from "./inference/instagramTitle";
-import { downloadPublicInstagramPost } from "./utils/instagramPublic";
+import {
+  downloadPublicInstagramPost,
+  fetchEmbeddedInstagramPost,
+  downloadInstagramMediaBatch,
+} from "./utils/instagramPublic";
 
 const MAX_MEDIA = 20;
 const MAX_FILE = 80 * 1024 * 1024;
@@ -124,6 +128,44 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
           reason.replace(/https?:\/\/\S+/g, "[URL]").slice(0, 200) +
           "); trying gallery-dl.",
       );
+    }
+
+    if (!files.length) {
+      // Instagram may include a complete JSON media payload in a browser-like
+      // HTML response even after its anonymous GraphQL API rejects POST/GET.
+      try {
+        const shortcode = new URL(url).pathname.split("/")[2];
+        const post = await fetchEmbeddedInstagramPost(
+          url,
+          shortcode,
+          ctx.abortSignal,
+          ctx.runProxy,
+        );
+        const count = await downloadInstagramMediaBatch(
+          post,
+          folder,
+          fileLimit,
+          MAX_BATCH,
+          ctx.abortSignal,
+        );
+        files = await mediaFiles(folder);
+        ctx.log.info(
+          "Extracted " +
+            count +
+            " Instagram media items from embedded page data.",
+        );
+      } catch (error) {
+        ctx.abortSignal.throwIfAborted();
+        const reason =
+          error instanceof Error
+            ? error.message
+            : "Unknown HTML extraction error";
+        ctx.log.warn(
+          "Instagram embedded media unavailable (" +
+            reason.replace(/https?:\/\/\S+/g, "[URL]").slice(0, 200) +
+            "); trying gallery-dl.",
+        );
+      }
     }
 
     if (!files.length) {

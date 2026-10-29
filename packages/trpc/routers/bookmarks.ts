@@ -512,20 +512,18 @@ export const bookmarksAppRouter = router({
           break;
         }
         case BookmarkTypes.TEXT: {
+          // A note must be titled and tagged even if embedding generation or
+          // vector indexing is delayed, disabled or fails.
+          await OpenAIQueue.enqueue(
+            { bookmarkId: bookmark.id, type: "tag" },
+            enqueueOpts,
+          );
           if (serverConfig.embedding.enableAutoIndexing) {
             await EmbeddingsQueue.enqueue(
               {
                 bookmarkId: bookmark.id,
                 type: "embed",
-                runTaggingOnComplete: true,
-              },
-              enqueueOpts,
-            );
-          } else {
-            await OpenAIQueue.enqueue(
-              {
-                bookmarkId: bookmark.id,
-                type: "tag",
+                runTaggingOnComplete: false,
               },
               enqueueOpts,
             );

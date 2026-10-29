@@ -165,36 +165,14 @@ describe("tagging failure safety", () => {
     ).rejects.toThrow("expected JSON");
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
-  it("reuses a known synonym without a second inference request", async () => {
-    const insert = vi.fn(() => ({
-      values: () => ({
-        onConflictDoNothing: () => ({ returning: () => ({ all: () => [] }) }),
-      }),
-    }));
-    mocks.transaction.mockImplementationOnce(async (fn) =>
-      fn({
-        query: {
-          bookmarkTags: {
-            findMany: () => ({
-              sync: () => [
-                { name: "Искусственный интеллект", id: "existing-ai" },
-              ],
-            }),
-          },
-        },
-        delete: () => ({
-          where: () => ({ returning: () => ({ all: () => [] }) }),
-        }),
-        insert,
-      }),
-    );
+  it("does not overwrite tags when inference returns fewer than five concepts", async () => {
     mocks.findTags.mockResolvedValue([{ name: "Искусственный интеллект" }]);
     const infer = vi.fn(async () => ({ response: '{"tags":["ИИ"]}' }));
-    await runTagging("b", job(), client(infer));
+    await expect(runTagging("b", job(), client(infer))).rejects.toThrow(
+      "fewer than five",
+    );
     expect(infer).toHaveBeenCalledTimes(1);
-    expect(mocks.transaction).toHaveBeenCalledTimes(1);
-    expect(insert).toHaveBeenCalledTimes(1);
-    expect(mocks.reindex).toHaveBeenCalledTimes(1);
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
   it("propagates queue cancellation during optional lookup", async () => {
     const request = job();
@@ -255,7 +233,13 @@ describe("tagging failure safety", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
   it("allows a valid semantic comparison to take longer than five seconds", async () => {
-    mocks.findTags.mockResolvedValue([{ name: "Погашение долгов" }]);
+    mocks.findTags.mockResolvedValue([
+      { name: "Погашение долгов" },
+      { name: "Кредиты" },
+      { name: "Финансовая грамотность" },
+      { name: "Долги" },
+      { name: "Бюджетирование" },
+    ]);
     mocks.transaction.mockResolvedValueOnce({
       detachedTags: [],
       attachedTags: [],
@@ -263,7 +247,8 @@ describe("tagging failure safety", () => {
     const infer = vi
       .fn()
       .mockResolvedValueOnce({
-        response: '{"tags":["Погашение задолженности"]}',
+        response:
+          '{"tags":["Погашение задолженности","Кредиты","Финансовая грамотность","Долги","Бюджетирование"]}',
       })
       .mockImplementationOnce(async () => {
         await new Promise((resolve) => setTimeout(resolve, 6000));

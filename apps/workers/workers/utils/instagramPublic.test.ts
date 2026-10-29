@@ -3,11 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("network", () => ({ fetchWithProxy: vi.fn() }));
+
 import {
   downloadPublicInstagramPost,
   fetchPublicInstagramPost,
   isInstagramCdnUrl,
   parsePublicInstagramPost,
+  parseEmbeddedInstagramPost,
 } from "./instagramPublic";
 
 const fixture = {
@@ -287,4 +290,72 @@ describe("anonymous Instagram GraphQL extractor", () => {
       }
     },
   );
+});
+
+describe("embedded browser HTML extraction", () => {
+  const media = {
+    code: "De7J5uajAKm",
+    media_type: 8,
+    carousel_media_count: 2,
+    user: { username: "creator" },
+    caption: { text: "Карточки о выборе отделочных материалов" },
+    carousel_media: [
+      {
+        media_type: 1,
+        image_versions2: {
+          candidates: [{ url: "https://cdninstagram.com/one.jpg" }],
+        },
+      },
+      {
+        media_type: 1,
+        image_versions2: {
+          candidates: [{ url: "https://cdninstagram.com/two.jpg" }],
+        },
+      },
+    ],
+  };
+  const page = (item: unknown) =>
+    '<html><script type="application/json" data-sjs>' +
+    JSON.stringify({ payload: { post: item } }) +
+    "</script></html>";
+
+  it("finds the requested complete carousel and keeps its caption", () => {
+    expect(parseEmbeddedInstagramPost(page(media), "De7J5uajAKm")).toEqual({
+      author: "creator",
+      caption: "Карточки о выборе отделочных материалов",
+      media: [
+        { url: "https://cdninstagram.com/one.jpg", type: "image" },
+        { url: "https://cdninstagram.com/two.jpg", type: "image" },
+      ],
+    });
+  });
+
+  it("rejects login shells, unrelated posts and partial carousels", () => {
+    expect(
+      parseEmbeddedInstagramPost("<html>Log in</html>", "De7J5uajAKm"),
+    ).toBeNull();
+    expect(parseEmbeddedInstagramPost(page(media), "ANOTHER")).toBeNull();
+    expect(
+      parseEmbeddedInstagramPost(
+        page({ ...media, carousel_media_count: 5 }),
+        "De7J5uajAKm",
+      ),
+    ).toBeNull();
+    expect(
+      parseEmbeddedInstagramPost(
+        page({
+          ...media,
+          carousel_media: [
+            {
+              media_type: 1,
+              image_versions2: {
+                candidates: [{ url: "https://localhost/x.jpg" }],
+              },
+            },
+          ],
+        }),
+        "De7J5uajAKm",
+      ),
+    ).toBeNull();
+  });
 });

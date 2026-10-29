@@ -27,7 +27,7 @@ export function buildImagePrompt(
 
   return `
 You are an expert whose responsibility is to help with automatic tagging for a read-it-later/bookmarking app.
-Analyze the attached image and suggest relevant tags that describe its key themes, topics, and main ideas. The rules are:
+First examine the attached image content. Only then suggest relevant tags that describe the actual visible subjects, themes, topics, and main ideas. The rules are:
 - Prefer concrete, durable tags: named products, technologies, projects, standards, subject areas, and important concepts.
 - Include only retrieval-worthy tags that describe the saved item's intended content, not incidental UI or page chrome.
 - The tags must be in ${lang}.
@@ -40,7 +40,7 @@ Analyze the attached image and suggest relevant tags that describe its key theme
     - A Cloudflare/security check, CAPTCHA, bot check, anti-DDoS challenge, browser verification, or access-blocked page
     - Boilerplate content such as cookie consent, login walls, GDPR notices, navigation menus, or a blank/empty image
   In these cases, return an empty tags array. Do not tag the failure/interstitial page itself.
-- Aim for 3-5 specific tags. Avoid generic filler or multiple tags with the same meaning.
+- If the image contains enough distinct subjects, return at least 5 (prefer 5-8) meaningful, non-duplicate tags. Never add filler just to reach the count.
 - If there are no good tags, leave the array empty.
 ${curatedInstruction}
 ${potentialRelevantTagsInstruction}
@@ -68,7 +68,7 @@ export function constructTextTaggingPrompt(
 
   return `
 You are an expert whose responsibility is to help with automatic tagging for a read-it-later/bookmarking app.
-Analyze the TEXT_CONTENT below and suggest relevant tags that describe its key themes, topics, and main ideas. The rules are:
+First examine the entire available TEXT_CONTENT (including any visual observations) and identify its central subject. Only then suggest relevant tags describing the actual themes, topics, and main ideas. The rules are:
 - Prefer concrete, durable tags: named products, technologies, projects, standards, subject areas, and important concepts.
 - Include only retrieval-worthy tags that describe the saved item's intended content, not incidental page chrome.
 - The tags must be in ${lang}.
@@ -81,7 +81,7 @@ Analyze the TEXT_CONTENT below and suggest relevant tags that describe its key t
     - A Cloudflare/security check, CAPTCHA, bot check, anti-DDoS challenge, browser verification, or access-blocked page
     - Boilerplate content such as cookie consent, login walls, GDPR notices, navigation menus, or empty pages
   If useful metadata or other legitimate content remains, generate tags using only that information. Otherwise, return an empty tags array. Never tag the failure, interstitial, or boilerplate content itself.
-- Aim for 3-5 tags.
+- If the saved content supports enough distinct themes, return at least 5 (prefer 5-8) relevant, non-duplicate tags. Never fabricate tags or tag site navigation to reach the count.
 - If there are no good tags, leave the array empty.
 ${curatedInstruction}
 ${potentialRelevantTagsInstruction}

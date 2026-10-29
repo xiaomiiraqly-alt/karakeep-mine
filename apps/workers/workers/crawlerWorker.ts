@@ -407,14 +407,18 @@ async function runCrawler(
   log.info(`Will crawl "${truncateUrl(url)}" for link with id "${bookmarkId}"`);
   await checkDomainRateLimit(ctx);
 
-  // Prefer media extraction for Instagram posts. Fall back to regular crawling
-  // when extraction is unavailable or the post is not accessible.
+  // Instagram login/interstitial pages are not the requested post content.
+  // Never pass a failed media extraction to the ordinary HTML crawler: doing
+  // so replaces valid archives with screenshots of Instagram's login page.
   if (!precrawledArchiveAssetId && instagramCanonicalUrl(url)) {
     const imported = await importInstagramPost(ctx);
-    if (imported) {
-      await enqueuePostCrawlJobs(ctx, job, true);
-      return { status: "completed" };
+    if (!imported) {
+      throw new Error(
+        "Instagram media extraction failed: preserving existing bookmark assets and scheduling retry",
+      );
     }
+    await enqueuePostCrawlJobs(ctx, job, true);
+    return { status: "completed" };
   }
 
   if (precrawledArchiveAssetId) {
