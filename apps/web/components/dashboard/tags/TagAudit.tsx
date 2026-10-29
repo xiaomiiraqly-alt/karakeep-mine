@@ -16,7 +16,7 @@ import { ScanSearch } from "lucide-react";
 
 import { useTRPC } from "@karakeep/shared-react/trpc";
 
-type AuditCandidate = {
+interface AuditCandidate {
   intoTagId: string;
   intoTagName: string;
   fromTagId: string;
