@@ -25,7 +25,7 @@ describe("titles independent of summarization", () => {
       }),
     ).toBe(true);
   });
-  it("preserves manual and descriptive titles and ignores empty notes", () => {
+  it("preserves manual bookmark titles and ignores empty notes", () => {
     expect(
       needsGeneratedTitle({ title: "Мои расчёты", text: { text: "Долг" } }),
     ).toBe(false);
@@ -37,7 +37,7 @@ describe("titles independent of summarization", () => {
           title: "Хэллоуин в Севастополе",
         },
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
   it("requires factual titles from current content and rejects unusable responses", () => {
     expect(taggingTitleInstruction({ text: { text: "Долг" } })).toContain(
