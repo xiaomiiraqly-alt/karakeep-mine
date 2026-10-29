@@ -203,6 +203,7 @@ async function inferTagsFromImage(
       [
         ...(await fetchCustomPrompts(bookmark.userId, "images")),
         similarBookmarkContext,
+        taggingTitleInstruction(bookmark),
       ],
       tagStyle,
       curatedTags,
@@ -292,6 +293,7 @@ async function inferTagsFromPDF(
     [
       ...(await fetchCustomPrompts(bookmark.userId, "text")),
       similarBookmarkContext,
+      taggingTitleInstruction(bookmark),
     ],
     `Content: ${bookmark.asset.content}`,
     serverConfig.inference.contextLength,
