@@ -126,7 +126,17 @@ describe("full tagging persistence against migrated SQLite", () => {
     db.insert(schema.bookmarkTags)
       .values({ id: "foreign", userId: "other", name: "Хэллоуин" })
       .run();
-    await runTagging("b", request(), inference(["Хэллоуин", "Праздники", "Городские события", "Костюмы", "Севастополь"]));
+    await runTagging(
+      "b",
+      request(),
+      inference([
+        "Хэллоуин",
+        "Праздники",
+        "Городские события",
+        "Костюмы",
+        "Севастополь",
+      ]),
+    );
     const saved = db.select().from(schema.tagsOnBookmarks).all();
     expect(saved).toHaveLength(5);
     expect(saved.every((item) => item.tagId !== "foreign")).toBe(true);
