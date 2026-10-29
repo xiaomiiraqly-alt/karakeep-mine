@@ -43,7 +43,7 @@ describe("Instagram AI titles", () => {
     expect(cleanInstagramTitle("Instagram — @githubradar")).toBeNull();
     expect(cleanInstagramTitle("https://example.com/evil")).toBeNull();
     expect(cleanInstagramTitle("<script>alert(1)</script>")).toBeNull();
-    expect(cleanInstagramTitle("Без названия")).toBe("Без названия");
+    expect(cleanInstagramTitle("Без названия")).toBeNull();
     expect(cleanInstagramTitle("")).toBeNull();
   });
 
