@@ -144,15 +144,19 @@ describe("full tagging persistence against migrated SQLite", () => {
       return {
         response: JSON.stringify({
           title: "Современная пергола с деревянными ламелями",
-          tags: ["Перголы", "Ландшафтный дизайн", "Архитектура", "Дерево", "Террасы"],
+          tags: [
+            "Перголы",
+            "Ландшафтный дизайн",
+            "Архитектура",
+            "Дерево",
+            "Террасы",
+          ],
         }),
       };
     });
-    await runTagging(
-      "b",
-      request(),
-      { inferFromImage } as unknown as InferenceClient,
-    );
+    await runTagging("b", request(), {
+      inferFromImage,
+    } as unknown as InferenceClient);
     expect(inferFromImage).toHaveBeenCalledTimes(1);
     expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
       "Современная пергола с деревянными ламелями",
