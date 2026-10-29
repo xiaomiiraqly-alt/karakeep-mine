@@ -101,7 +101,10 @@ function signalWithTimeout(parent: AbortSignal, milliseconds: number) {
 
 async function requestTextLimited(response: Response, maxBytes: number) {
   const length = Number(response.headers.get("content-length"));
-  if (length > maxBytes) throw new Error("Instagram response too large");
+  if (length > maxBytes) {
+    await response.body?.cancel();
+    throw new Error("Instagram response too large");
+  }
   if (!response.body) throw new Error("Instagram response has no body");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -115,6 +118,9 @@ async function requestTextLimited(response: Response, maxBytes: number) {
       chunks.push(value);
     }
   } finally {
+    await reader.cancel().catch(() => {
+      /* Preserve the original read/write error. */
+    });
     reader.releaseLock();
   }
   const bytes = new Uint8Array(size);
@@ -142,6 +148,8 @@ export async function fetchPublicInstagramPost(
     .map((cookie) => /^csrftoken=([^;]+)/.exec(cookie)?.[1])
     .find(Boolean);
 
+  await home.body?.cancel();
+
   const headers: Record<string, string> = {
     "User-Agent": USER_AGENT,
     "X-IG-App-ID": APP_ID,
@@ -164,7 +172,10 @@ export async function fetchPublicInstagramPost(
     }),
     signal: signalWithTimeout(signal, 20_000),
   });
-  if (!result.ok) throw new Error("Instagram metadata HTTP " + result.status);
+  if (!result.ok) {
+    await result.body?.cancel();
+    throw new Error("Instagram metadata HTTP " + result.status);
+  }
   const raw = await requestTextLimited(result, 3_000_000);
   const parsed: unknown = JSON.parse(raw);
   const post = parsePublicInstagramPost(parsed);
@@ -200,14 +211,17 @@ export async function downloadPublicInstagramPost(
         redirect: "manual",
         signal: signalWithTimeout(signal, 30_000),
       });
-      if (!response.ok || !response.body)
+      if (!response.ok || !response.body) {
+        await response.body?.cancel();
         throw new Error("Instagram CDN HTTP " + response.status);
+      }
       const contentType = response.headers.get("content-type") ?? "";
       if (
         !contentType
           .toLowerCase()
           .startsWith(item.type === "video" ? "video/" : "image/")
       ) {
+        await response.body.cancel();
         throw new Error("Unexpected Instagram media content type");
       }
 
@@ -226,6 +240,9 @@ export async function downloadPublicInstagramPost(
             await handle.writeFile(value);
           }
         } finally {
+          await reader.cancel().catch(() => {
+            /* Preserve the original read/write error. */
+          });
           reader.releaseLock();
         }
       } finally {

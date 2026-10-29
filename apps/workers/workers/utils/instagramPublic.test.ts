@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   downloadPublicInstagramPost,
+  fetchPublicInstagramPost,
   isInstagramCdnUrl,
   parsePublicInstagramPost,
 } from "./instagramPublic";
@@ -228,4 +229,62 @@ describe("anonymous Instagram GraphQL extractor", () => {
       await fs.rm(folder, { recursive: true, force: true });
     }
   });
+  it("cancels unread and oversized response bodies", async () => {
+    const homeCancelled = vi.fn();
+    const metadataCancelled = vi.fn();
+    const mockedFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(new ReadableStream({ cancel: homeCancelled })),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(3000001));
+            },
+            cancel: metadataCancelled,
+          }),
+        ),
+      );
+    vi.stubGlobal("fetch", mockedFetch);
+    try {
+      await expect(
+        fetchPublicInstagramPost("abc123", new AbortController().signal),
+      ).rejects.toThrow("too large");
+      expect(homeCancelled).toHaveBeenCalledTimes(1);
+      expect(metadataCancelled).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it.each([
+    { status: 200, length: "3000001" },
+    { status: 429, length: "1" },
+  ])(
+    "cancels metadata rejected by status or declared length: %j",
+    async ({ status, length }) => {
+      const cancelled = vi.fn();
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(new Response(""))
+          .mockResolvedValueOnce(
+            new Response(new ReadableStream({ cancel: cancelled }), {
+              status,
+              headers: { "content-length": length },
+            }),
+          ),
+      );
+      try {
+        await expect(
+          fetchPublicInstagramPost("abc123", new AbortController().signal),
+        ).rejects.toThrow();
+        expect(cancelled).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 });

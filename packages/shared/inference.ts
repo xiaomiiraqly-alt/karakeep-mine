@@ -332,8 +332,8 @@ export class OpenAIInferenceClient implements InferenceClient {
       },
     );
 
-    const response = chatCompletion.choices[0].message.content;
-    if (!response) {
+    const response = chatCompletion.choices[0]?.message?.content;
+    if (!response?.trim()) {
       throw new Error(`Got no message content from OpenAI`);
     }
     return { response, totalTokens: chatCompletion.usage?.total_tokens };
@@ -383,8 +383,8 @@ export class OpenAIInferenceClient implements InferenceClient {
       },
     );
 
-    const response = chatCompletion.choices[0].message.content;
-    if (!response) {
+    const response = chatCompletion.choices[0]?.message?.content;
+    if (!response?.trim()) {
       throw new Error(`Got no message content from OpenAI`);
     }
     return { response, totalTokens: chatCompletion.usage?.total_tokens };

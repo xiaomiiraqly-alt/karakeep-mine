@@ -4,6 +4,8 @@ import { z } from "zod";
 import { OpenAIInferenceClient } from "./inference";
 import type { OpenAIInferenceConfig } from "./inference";
 
+let completionChoices: { message: { content: string | null } }[] = [];
+
 const capturedBodies: Record<string, unknown>[] = [];
 const tagSchema = z.object({ tags: z.array(z.string()) });
 
@@ -15,7 +17,7 @@ vi.mock("openai", () => {
           create: vi.fn(async (body: Record<string, unknown>) => {
             capturedBodies.push(body);
             return {
-              choices: [{ message: { content: "{}" } }],
+              choices: completionChoices,
               usage: { total_tokens: 1 },
             };
           }),
@@ -51,6 +53,7 @@ function makeConfig(
 describe("OpenAIInferenceClient response_format", () => {
   beforeEach(() => {
     capturedBodies.length = 0;
+    completionChoices = [{ message: { content: "{}" } }];
   });
 
   it("omits response_format for schema-less text inference in json mode", async () => {
@@ -93,4 +96,23 @@ describe("OpenAIInferenceClient response_format", () => {
       json_schema: { name: "schema" },
     });
   });
+  it.each([
+    { choices: [] },
+    { choices: [{ message: { content: null } }] },
+    { choices: [{ message: { content: "  " } }] },
+  ])(
+    "rejects empty completions with an actionable error: %j",
+    async ({ choices }) => {
+      completionChoices = choices;
+      const client = new OpenAIInferenceClient(makeConfig("json"));
+      await expect(
+        client.inferFromText("infer tags", { schema: tagSchema }),
+      ).rejects.toThrow("Got no message content from OpenAI");
+      await expect(
+        client.inferFromImage("infer tags", "image/jpeg", "base64", {
+          schema: tagSchema,
+        }),
+      ).rejects.toThrow("Got no message content from OpenAI");
+    },
+  );
 });

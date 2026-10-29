@@ -8,16 +8,20 @@ const mocks = vi.hoisted(() => ({
   vector: vi.fn(),
   reindex: vi.fn(),
   update: vi.fn(),
+  prompts: vi.fn(),
+  tagsApi: vi.fn(),
 }));
 vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
-vi.mock("trpc", () => ({ buildImpersonatingTRPCClient: vi.fn() }));
+vi.mock("trpc", () => ({
+  buildImpersonatingTRPCClient: async () => ({ tags: { list: mocks.tagsApi } }),
+}));
 vi.mock("@karakeep/db", () => ({
   db: {
     query: {
       bookmarks: { findFirst: mocks.findBookmark },
       users: { findFirst: mocks.findUser },
       bookmarkTags: { findMany: mocks.findTags },
-      customPrompts: { findMany: vi.fn(async () => []) },
+      customPrompts: { findMany: mocks.prompts },
     },
     transaction: mocks.transaction,
     update: mocks.update,
@@ -78,6 +82,7 @@ afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.prompts.mockResolvedValue([]);
   mocks.update.mockReturnValue({
     set: () => ({ where: () => ({ returning: async () => [{ id: "b" }] }) }),
   });
@@ -291,5 +296,23 @@ describe("tagging failure safety", () => {
     expect(infer.mock.calls[0][0]).toContain('"title" field');
     expect(infer).toHaveBeenCalledTimes(1);
     expect(mocks.update).toHaveBeenCalledTimes(1);
+  });
+  it("expands AI and human placeholders from their own attachment counters", async () => {
+    mocks.prompts.mockResolvedValue([{ text: "AI=$aiTags; HUMAN=$userTags" }]);
+    mocks.tagsApi.mockResolvedValue({
+      tags: [
+        {
+          name: "Автоматический",
+          numBookmarksByAttachedType: { ai: 2, human: 0 },
+        },
+        { name: "Ручной", numBookmarksByAttachedType: { ai: 0, human: 3 } },
+      ],
+    });
+    const infer = vi.fn(async (prompt: string) => {
+      expect(prompt).toContain("AI=[Автоматический]; HUMAN=[Ручной]");
+      return { response: '{"tags":[]}' };
+    });
+    await runTagging("b", job(), client(infer));
+    expect(infer).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,7 @@
 /** Add image/frames context to Instagram AI tagging and summarization. */
 import sharp from "sharp";
+import { LRUCache } from "lru-cache";
+import { withTaggingDeadline } from "./taggingResilience";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@karakeep/db";
@@ -9,6 +11,11 @@ import type { InferenceClient } from "@karakeep/shared/inference";
 import logger from "@karakeep/shared/logger";
 
 import { instagramCanonicalUrl } from "../utils/instagramUrls";
+
+const observationCache = new LRUCache<string, string>({
+  max: 100,
+  ttl: 5 * 60 * 1000,
+});
 
 const IMAGE_TYPES = [
   AssetTypes.LINK_BANNER_IMAGE,
@@ -22,11 +29,15 @@ export async function getInstagramVisualContext(
   userId: string,
   client: InferenceClient,
   abortSignal: AbortSignal,
+  budgetMs = 30000,
 ): Promise<string> {
+  abortSignal.throwIfAborted();
   if (!url || !instagramCanonicalUrl(url)) return "";
+  const deadline = Date.now() + budgetMs;
   const candidates = await db.query.assets.findMany({
     where: and(
       eq(assets.bookmarkId, bookmarkId),
+      eq(assets.userId, userId),
       inArray(assets.assetType, [...IMAGE_TYPES]),
     ),
   });
@@ -47,9 +58,17 @@ export async function getInstagramVisualContext(
     ...photos.slice(3),
     ...frames.slice(3),
   ].slice(0, 6);
+  const cacheKey = JSON.stringify([
+    userId,
+    bookmarkId,
+    selected.map((asset) => asset.id),
+  ]);
+  const cached = observationCache.get(cacheKey);
+  if (cached) return cached;
   const observations: string[] = [];
   for (const [index, candidate] of selected.entries()) {
     abortSignal.throwIfAborted();
+    if (Date.now() >= deadline) break;
     try {
       const { asset } = await readAsset({ userId, assetId: candidate.id });
       if (asset.length > 25 * 1024 * 1024) continue;
@@ -63,13 +82,20 @@ export async function getInstagramVisualContext(
         })
         .jpeg({ quality: 77 })
         .toBuffer();
-      const response = await client.inferFromImage(
-        "Describe only what is visibly present in this Instagram photo or video frame. " +
-          "Mention readable text. Do not guess identities or invent events. " +
-          "Reply concisely in plain text.",
-        "image/jpeg",
-        jpeg.toString("base64"),
-        { schema: null, abortSignal },
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const response = await withTaggingDeadline(
+        abortSignal,
+        remaining,
+        (signal) =>
+          client.inferFromImage(
+            "Describe only what is visibly present in this Instagram photo or video frame. " +
+              "Mention readable text. Do not guess identities or invent events. " +
+              "Reply concisely in plain text.",
+            "image/jpeg",
+            jpeg.toString("base64"),
+            { schema: null, abortSignal: signal },
+          ),
       );
       if (response.response?.trim()) {
         observations.push(
@@ -78,6 +104,7 @@ export async function getInstagramVisualContext(
       }
     } catch (error) {
       if (abortSignal.aborted) throw error;
+      if (error instanceof Error && error.name === "TimeoutError") break;
       logger.warn(
         "[Instagram Vision] Failed to analyze frame " +
           (index + 1) +
@@ -86,5 +113,7 @@ export async function getInstagramVisualContext(
       );
     }
   }
-  return observations.join("\n");
+  const result = observations.join("\n");
+  if (result) observationCache.set(cacheKey, result);
+  return result;
 }

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { getBookmarkDomain } from "network";
 import { buildImpersonatingTRPCClient } from "trpc";
 import { z } from "zod";
@@ -221,6 +221,7 @@ async function fetchCustomPrompts(
   const prompts = await db.query.customPrompts.findMany({
     where: and(
       eq(customPrompts.userId, userId),
+      eq(customPrompts.enabled, true),
       inArray(customPrompts.appliesTo, ["all_tagging", appliesTo]),
     ),
     columns: {
@@ -248,11 +249,11 @@ async function replaceTagsPlaceholders(
   const tags = (await api.tags.list({})).tags;
   const tagsString = `[${tags.map((tag) => tag.name).join(", ")}]`;
   const aiTagsString = `[${tags
-    .filter((tag) => tag.numBookmarksByAttachedType.human ?? true)
+    .filter((tag) => (tag.numBookmarksByAttachedType.ai ?? 0) > 0)
     .map((tag) => tag.name)
     .join(", ")}]`;
   const userTagsString = `[${tags
-    .filter((tag) => tag.numBookmarksByAttachedType.human ?? false)
+    .filter((tag) => (tag.numBookmarksByAttachedType.human ?? 0) > 0)
     .map((tag) => tag.name)
     .join(", ")}]`;
 
@@ -320,20 +321,16 @@ async function inferTagsFromText(
 ) {
   let visualContext = "";
   try {
-    visualContext = await withTaggingDeadline(
+    visualContext = await getInstagramVisualContext(
+      bookmark.link?.url,
+      bookmark.id,
+      bookmark.userId,
+      inferenceClient,
       abortSignal,
       Math.min(
         30000,
         Math.max(1000, serverConfig.inference.jobTimeoutSec * 250),
       ),
-      (signal) =>
-        getInstagramVisualContext(
-          bookmark.link?.url,
-          bookmark.id,
-          bookmark.userId,
-          inferenceClient,
-          signal,
-        ),
     );
   } catch (error) {
     abortSignal.throwIfAborted();
@@ -635,6 +632,7 @@ async function connectTags(
           and(
             eq(tagsOnBookmarks.attachedBy, "ai"),
             eq(tagsOnBookmarks.bookmarkId, bookmarkId),
+            notInArray(tagsOnBookmarks.tagId, [...allTagIds]),
           ),
         )
         .returning()
@@ -662,6 +660,9 @@ async function connectTags(
     { behavior: "immediate" },
   );
 
+  logger.info(
+    `[inference] Updated tags for bookmark "${bookmarkId}": attached ${res.attachedTags.length}, detached ${res.detachedTags.length}.`,
+  );
   await RuleEngine.triggerOnEvent(userId, bookmarkId, [
     ...res.detachedTags.map((t) => ({
       type: "tagRemoved" as const,
@@ -860,6 +861,12 @@ export async function runTagging(
       columns: { name: true },
     });
     curatedTagNames = tags.map((t) => t.name);
+    if (!curatedTagNames.length) {
+      logger.info(
+        `[inference][${jobId}] No selected curated tags remain; preserving saved tags.`,
+      );
+      return;
+    }
   } else {
     // If no curated tags are configured, try to find some potentially relevant tags
     try {
@@ -947,6 +954,9 @@ export async function runTagging(
           bookmark.title == null
             ? isNull(bookmarks.title)
             : eq(bookmarks.title, bookmark.title),
+          ...(bookmark.modifiedAt
+            ? [eq(bookmarks.modifiedAt, bookmark.modifiedAt)]
+            : []),
         ),
       )
       .returning({ id: bookmarks.id });
