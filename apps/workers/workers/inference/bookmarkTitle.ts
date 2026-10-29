@@ -19,8 +19,10 @@ export function needsGeneratedTitle(bookmark: TitleCandidate): boolean {
     !/^(untitled|без названия)$/i.test(bookmark.title.trim()) &&
     // Some upload clients send the filename as the default bookmark title.
     // This is not a user-authored description of the image or PDF.
-    !(bookmark.asset?.fileName &&
-      bookmark.title.trim() === bookmark.asset.fileName.trim())
+    !(
+      bookmark.asset?.fileName &&
+      bookmark.title.trim() === bookmark.asset.fileName.trim()
+    )
   )
     return false;
   if (bookmark.text?.text?.trim()) return true;
