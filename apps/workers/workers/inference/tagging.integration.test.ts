@@ -96,6 +96,7 @@ describe("full tagging persistence against migrated SQLite", () => {
       "Севастополь",
       "Рестораны И Бары",
       "Мероприятия",
+      "Ночные события",
     ];
     db.insert(schema.bookmarkTags)
       .values(
@@ -107,9 +108,9 @@ describe("full tagging persistence against migrated SQLite", () => {
       .run();
     await runTagging("b", request(), inference(names));
     const saved = db.select().from(schema.tagsOnBookmarks).all();
-    expect(saved).toHaveLength(4);
+    expect(saved).toHaveLength(5);
     expect(saved.find((row) => row.tagId === "t0")?.attachedBy).toBe("human");
-    expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(4);
+    expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(5);
     expect(state.events).toHaveBeenLastCalledWith(
       "u",
       "b",
@@ -125,11 +126,11 @@ describe("full tagging persistence against migrated SQLite", () => {
     db.insert(schema.bookmarkTags)
       .values({ id: "foreign", userId: "other", name: "Хэллоуин" })
       .run();
-    await runTagging("b", request(), inference(["Хэллоуин"]));
+    await runTagging("b", request(), inference(["Хэллоуин", "Праздники", "Городские события", "Костюмы", "Севастополь"]));
     const saved = db.select().from(schema.tagsOnBookmarks).all();
-    expect(saved).toHaveLength(1);
-    expect(saved[0].tagId).not.toBe("foreign");
-    expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(2);
+    expect(saved).toHaveLength(5);
+    expect(saved.every((item) => item.tagId !== "foreign")).toBe(true);
+    expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(6);
   });
   it("preserves saved AI tags on empty output", async () => {
     db.insert(schema.bookmarkTags)
