@@ -1,6 +1,8 @@
 /** Public Instagram media fallback. No user login, cookies or credentials are stored. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { fetchWithProxy } from "network";
+import type { RunProxyConfig } from "network";
 
 const DOC_ID = "27128499623469141";
 const APP_ID = "936619743392459";
@@ -219,6 +221,96 @@ export async function fetchPublicInstagramPost(
   return post;
 }
 
+
+/**
+ * Instagram can embed full media JSON into a browser-navigation HTML response,
+ * even when anonymous GraphQL responds 401. Extract data only from the exact
+ * post shortcode, never from a login shell or unrelated recommended post.
+ */
+export function parseEmbeddedInstagramPost(
+  html: string,
+  shortcode: string,
+): PublicInstagramPost | null {
+  const scripts = html.matchAll(
+    /<script\b(?=[^>]*\bdata-sjs\b)(?=[^>]*\btype=["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  for (const [, source] of scripts) {
+    if (!source.includes('"media_type"') || !source.includes(shortcode)) continue;
+    let root: unknown;
+    try {
+      root = JSON.parse(source);
+    } catch {
+      continue;
+    }
+    const pending = [root];
+    let inspected = 0;
+    while (pending.length && inspected++ < 50000) {
+      const item = pending.pop();
+      const record = object(item);
+      if (!record) {
+        if (Array.isArray(item)) pending.push(...item);
+        continue;
+      }
+      if (
+        (record.code === shortcode || record.shortcode === shortcode) &&
+        typeof record.media_type === "number"
+      ) {
+        // Reuse the same validation for allowed CDN URLs, carousel length,
+        // caption and author as the GraphQL route.
+        const parsed = parsePublicInstagramPost({
+          data: {
+            xdt_api__v1__media__shortcode__web_info: {
+              items: [record],
+            },
+          },
+        });
+        if (parsed) return parsed;
+      }
+      pending.push(...Object.values(record));
+    }
+  }
+  return null;
+}
+
+/** Browser navigation fallback, with the same selected proxy as the crawler. */
+export async function fetchEmbeddedInstagramPost(
+  url: string,
+  shortcode: string,
+  signal: AbortSignal,
+  runProxy: RunProxyConfig,
+): Promise<PublicInstagramPost> {
+  const response = await fetchWithProxy(
+    url,
+    {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Linux"',
+      },
+      size: 8_000_000,
+      signal: signalWithTimeout(signal, 20_000),
+    },
+    runProxy,
+  );
+  if (!response.ok) {
+    response.body?.destroy();
+    throw new Error("Instagram browser page HTTP " + response.status);
+  }
+  const html = await response.text();
+  const result = parseEmbeddedInstagramPost(html, shortcode);
+  if (!result) throw new Error("Instagram page contains no verified post media");
+  return result;
+}
+
 /** Stream media directly to disk and clean incomplete batches on failure. */
 export async function downloadPublicInstagramPost(
   shortcode: string,
@@ -228,6 +320,17 @@ export async function downloadPublicInstagramPost(
   signal: AbortSignal,
 ): Promise<number> {
   const post = await fetchPublicInstagramPost(shortcode, signal);
+  return downloadInstagramMediaBatch(post, folder, fileLimit, batchLimit, signal);
+}
+
+/** The HTML and GraphQL extraction paths share one validated CDN downloader. */
+export async function downloadInstagramMediaBatch(
+  post: PublicInstagramPost,
+  folder: string,
+  fileLimit: number,
+  batchLimit: number,
+  signal: AbortSignal,
+): Promise<number> {
   const written: string[] = [];
   let total = 0;
   try {
