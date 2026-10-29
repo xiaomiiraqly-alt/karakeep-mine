@@ -508,16 +508,26 @@ async function reuseExistingSemanticTags(
         ),
       })
       .parse(parseJsonFromLLMResponse(response.response));
+    // An incomplete/contradictory comparison cannot justify replacing saved tags.
+    if (
+      newTags.some((tag) => {
+        const matches = parsed.matches.filter(
+          (match) => match.suggested === tag,
+        );
+        return (
+          matches.length !== 1 ||
+          (matches[0].existing !== null &&
+            !candidates.includes(matches[0].existing))
+        );
+      })
+    ) {
+      logger.warn(
+        "[inference] Incomplete semantic comparison; preserving saved tags.",
+      );
+      return [];
+    }
     const preferred = applySemanticTagMatches(
-      normalized.filter(
-        (tag) =>
-          known.has(tagConceptKey(tag)) ||
-          parsed.matches.some(
-            (match) =>
-              match.suggested === tag &&
-              (match.existing === null || candidates.includes(match.existing)),
-          ),
-      ),
+      normalized,
       candidates,
       parsed.matches,
     );
@@ -525,9 +535,9 @@ async function reuseExistingSemanticTags(
   } catch (error) {
     if (abortSignal.aborted) throw error;
     logger.warn(
-      `[inference] Could not compare new tags against existing vocabulary: ${error instanceof Error ? error.name : "unknown"}. Preserving known tags; deferring unchecked new tags.`,
+      `[inference] Could not compare new tags against existing vocabulary: ${error instanceof Error ? error.name : "unknown"}. Preserving saved tags; deferring unchecked new tags.`,
     );
-    return normalized.filter((tag) => known.has(tagConceptKey(tag)));
+    return [];
   }
 }
 
