@@ -54,10 +54,7 @@ export async function getInstagramVisualContext(
   // Include the complete saved carousel (up to 20 slides) and all Reel frames,
   // not just the first six assets. For large galleries analyze contact sheets of
   // four slides so the limited AI window can cover the full publication.
-  const selected = [
-    ...photos.slice(0, 20),
-    ...frames.slice(0, 6),
-  ];
+  const selected = [...photos.slice(0, 20), ...frames.slice(0, 6)];
   const cacheKey = JSON.stringify([
     userId,
     bookmarkId,
@@ -92,23 +89,26 @@ export async function getInstagramVisualContext(
           .toBuffer();
         tiles.push(jpeg);
       }
-      const image = groupSize === 1
-        ? tiles[0]
-        : await sharp({
-            create: {
-              width: 1400,
-              height: 1400,
-              channels: 3,
-              background: "#ffffff",
-            },
-          })
-            .composite(tiles.map((input, index) => ({
-              input,
-              left: (index % 2) * 700,
-              top: Math.floor(index / 2) * 700,
-            })))
-            .jpeg({ quality: 75 })
-            .toBuffer();
+      const image =
+        groupSize === 1
+          ? tiles[0]
+          : await sharp({
+              create: {
+                width: 1400,
+                height: 1400,
+                channels: 3,
+                background: "#ffffff",
+              },
+            })
+              .composite(
+                tiles.map((input, index) => ({
+                  input,
+                  left: (index % 2) * 700,
+                  top: Math.floor(index / 2) * 700,
+                })),
+              )
+              .jpeg({ quality: 75 })
+              .toBuffer();
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
       const response = await withTaggingDeadline(
@@ -126,8 +126,12 @@ export async function getInstagramVisualContext(
       );
       if (response.response?.trim()) {
         observations.push(
-          "Visual slides " + (offset + 1) + "-" + (offset + group.length) +
-          ": " + response.response.slice(0, 3000),
+          "Visual slides " +
+            (offset + 1) +
+            "-" +
+            (offset + group.length) +
+            ": " +
+            response.response.slice(0, 3000),
         );
       }
     } catch (error) {
@@ -135,7 +139,10 @@ export async function getInstagramVisualContext(
       if (error instanceof Error && error.name === "TimeoutError") break;
       logger.warn(
         "[Instagram Vision] Failed to analyze slides " +
-          (offset + 1) + "-" + (offset + group.length) + ": " +
+          (offset + 1) +
+          "-" +
+          (offset + group.length) +
+          ": " +
           (error instanceof Error ? error.name : "unknown"),
       );
     }
