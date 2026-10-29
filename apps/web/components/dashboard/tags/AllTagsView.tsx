@@ -42,6 +42,7 @@ import { CreateTagModal } from "./CreateTagModal";
 import DeleteTagConfirmationDialog from "./DeleteTagConfirmationDialog";
 import { MultiTagSelector } from "./MultiTagSelector";
 import { TagPill } from "./TagPill";
+import { TagAudit } from "./TagAudit";
 
 function DeleteAllUnusedTags({ numUnusedTags }: { numUnusedTags: number }) {
   const { t } = useTranslation();
@@ -277,6 +278,7 @@ export default function AllTagsView() {
             </Toggle>
           </div>
         </div>
+        <TagAudit />
         <div className="flex flex-col gap-3">
           <div className="flex w-full items-center gap-2">
             <div className="flex-1">
