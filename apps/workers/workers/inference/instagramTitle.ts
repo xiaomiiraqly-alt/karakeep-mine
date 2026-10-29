@@ -73,14 +73,16 @@ export function updateInstagramReaderHeading(
   title: string,
 ): string | null {
   if (!html) return html;
-  const escaped = title.replace(/[&<>"']/g, (char) =>
-    ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    })[char] ?? char,
+  const escaped = title.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char] ?? char,
   );
   return html.replace(
     /^<article><h1>[^<]*<\/h1>/,

@@ -11,9 +11,9 @@ describe("Instagram AI titles", () => {
   it("recognizes generic imported titles, but leaves meaningful titles alone", () => {
     expect(isGenericInstagramTitle("Instagram — @githubradar")).toBe(true);
     expect(isGenericInstagramTitle("Instagram post")).toBe(true);
-    expect(isGenericInstagramTitle("https://www.instagram.com/p/De7J5uajAKm/")).toBe(
-      true,
-    );
+    expect(
+      isGenericInstagramTitle("https://www.instagram.com/p/De7J5uajAKm/"),
+    ).toBe(true);
     expect(isGenericInstagramTitle("Лучшие сервисы для вайбкодинга")).toBe(
       false,
     );
@@ -38,7 +38,7 @@ describe("Instagram AI titles", () => {
 
   it("cleans the model response and rejects uninformative or unsafe titles", () => {
     expect(
-      cleanInstagramTitle('Заголовок: «12 инструментов для вайбкодинга»'),
+      cleanInstagramTitle("Заголовок: «12 инструментов для вайбкодинга»"),
     ).toBe("12 инструментов для вайбкодинга");
     expect(cleanInstagramTitle("Instagram — @githubradar")).toBeNull();
     expect(cleanInstagramTitle("https://example.com/evil")).toBeNull();
@@ -52,14 +52,17 @@ describe("Instagram AI titles", () => {
       '<article><h1>Instagram — @creator</h1><figure><img src="karakeep-asset:123"></figure><p>Actual caption</p></article>';
     const updated = updateInstagramReaderHeading(
       html,
-      'Сервисы для дизайна и разработки',
+      "Сервисы для дизайна и разработки",
     );
     expect(updated).toContain("<h1>Сервисы для дизайна и разработки</h1>");
     expect(updated).toContain('src="karakeep-asset:123"');
     expect(updated).toContain("<p>Actual caption</p>");
     expect(updateInstagramReaderHeading(null, "Any valid title")).toBeNull();
     expect(
-      updateInstagramReaderHeading("<article><p>no heading</p></article>", "New title"),
+      updateInstagramReaderHeading(
+        "<article><p>no heading</p></article>",
+        "New title",
+      ),
     ).toBe("<article><p>no heading</p></article>");
   });
 });

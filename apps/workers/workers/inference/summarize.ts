@@ -2,7 +2,12 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getBookmarkDomain } from "network";
 
 import { db } from "@karakeep/db";
-import { bookmarkLinks, bookmarks, customPrompts, users } from "@karakeep/db/schema";
+import {
+  bookmarkLinks,
+  bookmarks,
+  customPrompts,
+  users,
+} from "@karakeep/db/schema";
 import {
   addLogFields,
   setSpanAttributes,
