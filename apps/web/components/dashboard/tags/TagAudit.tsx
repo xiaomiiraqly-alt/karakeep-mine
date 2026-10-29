@@ -26,7 +26,7 @@ interface AuditCandidate {
   intoBookmarkCount: number;
   overlappingBookmarks: number;
   affectedBookmarks: number;
-};
+}
 
 const explanations: Record<AuditCandidate["reason"], string> = {
   same_spelling: "Различия в регистре или разделителях",
