@@ -1,0 +1,28 @@
+name: Format Tag Audit UI
+on:
+  push:
+    branches: [feature/canonical-ai-tags]
+permissions:
+  contents: write
+concurrency:
+  group: fmt-tag-audit-ui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  format:
+    if: "!contains(github.event.head_commit.message, 'style(tags): format audit UI')"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./tooling/github/setup
+      - name: Apply canonical formatting
+        run: pnpm exec oxfmt --write apps/web/components/dashboard/tags/TagAudit.tsx
+      - name: Commit formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/components/dashboard/tags/TagAudit.tsx
+          if ! git diff --cached --quiet; then
+            HUSKY=0 git -c core.hooksPath=/dev/null commit -m "style(tags): format audit UI"
+            git pull --rebase origin feature/canonical-ai-tags
+            git push origin HEAD:feature/canonical-ai-tags
+          fi
