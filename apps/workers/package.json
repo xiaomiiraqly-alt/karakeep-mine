@@ -74,7 +74,7 @@
     "build:watch": "tsdown --watch",
     "lint": "oxlint --ignore-path=../../.gitignore .",
     "lint:fix": "oxlint --ignore-path=../../.gitignore . --fix",
-    "format": "oxfmt --ignore-path=../../.gitignore . && git diff -- .",
+    "format": "oxfmt --ignore-path=../../.gitignore --check .",
     "format:fix": "oxfmt --ignore-path=../../.gitignore .",
     "test": "vitest run",
     "test:watch": "vitest",
