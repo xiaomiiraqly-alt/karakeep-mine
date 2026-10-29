@@ -63,9 +63,17 @@ export function parsePublicInstagramPost(
   const post = object(array(webInfo?.items)[0]);
   if (!post) return null;
 
-  const candidates = array(post.carousel_media).length
-    ? array(post.carousel_media)
-    : [post];
+  const slides = array(post.carousel_media);
+  // Some Instagram responses expose only the cover of a carousel. Never
+  // silently declare that partial response a successful full-post archive.
+  const declaredCount = post.carousel_media_count;
+  if (
+    typeof declaredCount === "number" &&
+    Number.isInteger(declaredCount) &&
+    declaredCount > 1 &&
+    slides.length !== declaredCount
+  ) return null;
+  const candidates = slides.length ? slides : [post];
   const media: PublicInstagramMedia[] = [];
   for (const entry of candidates) {
     const item = object(entry);
@@ -144,34 +152,62 @@ export async function fetchPublicInstagramPost(
     redirect: "manual",
     signal: signalWithTimeout(signal, 15_000),
   });
-  const csrf = (home.headers.getSetCookie?.() ?? [])
-    .map((cookie) => /^csrftoken=([^;]+)/.exec(cookie)?.[1])
-    .find(Boolean);
+  // An anonymous browser session includes more than csrftoken. Forward only
+  // Instagram's non-authentication cookies; stripping mid/ig_did can cause
+  // the GraphQL endpoint to reject a request that a browser would accept.
+  const allowedCookies = new Set(["csrftoken", "mid", "ig_did", "datr", "wd"]);
+  const cookies = (home.headers.getSetCookie?.() ?? [
+    home.headers.get("set-cookie") ?? "",
+  ])
+    .map((header) => /^([a-zA-Z0-9_]+)=([^;]*)/.exec(header))
+    .filter((match): match is RegExpExecArray => Boolean(match))
+    .filter((match) => allowedCookies.has(match[1]))
+    .map((match) => match[1] + "=" + match[2]);
+  const csrf = cookies
+    .find((cookie) => cookie.startsWith("csrftoken="))
+    ?.slice("csrftoken=".length);
 
   await home.body?.cancel();
-
+  signal.throwIfAborted();
   const headers: Record<string, string> = {
     "User-Agent": USER_AGENT,
     "X-IG-App-ID": APP_ID,
     "X-CSRFToken": csrf ?? "",
     "Content-Type": "application/x-www-form-urlencoded",
-    Referer: "https://www.instagram.com/",
+    Accept: "application/json",
+    Origin: "https://www.instagram.com",
+    Referer: "https://www.instagram.com/p/" + shortcode + "/",
   };
-  if (csrf) headers.Cookie = "csrftoken=" + csrf;
+  if (cookies.length) headers.Cookie = cookies.join("; ");
 
-  const result = await fetch("https://www.instagram.com/graphql/query", {
+  const variables = JSON.stringify({
+    shortcode,
+    __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false,
+  });
+  const postResponse = await fetch("https://www.instagram.com/graphql/query", {
     method: "POST",
     headers,
     redirect: "manual",
-    body: new URLSearchParams({
-      doc_id: DOC_ID,
-      variables: JSON.stringify({
-        shortcode,
-        __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false,
-      }),
-    }),
+    body: new URLSearchParams({ doc_id: DOC_ID, variables }),
     signal: signalWithTimeout(signal, 20_000),
   });
+  let result = postResponse;
+  if (postResponse.status === 401 || postResponse.status === 403) {
+    // Some anonymous Instagram gateways accept the same public document via
+    // GET but reject POST. Try once, without forwarding any user credentials.
+    await postResponse.body?.cancel();
+    signal.throwIfAborted();
+    const query = new URLSearchParams({ doc_id: DOC_ID, variables });
+    result = await fetch(
+      "https://www.instagram.com/graphql/query/?" + query,
+      {
+        method: "GET",
+        headers,
+        redirect: "manual",
+        signal: signalWithTimeout(signal, 20_000),
+      },
+    );
+  }
   if (!result.ok) {
     await result.body?.cancel();
     throw new Error("Instagram metadata HTTP " + result.status);
@@ -179,7 +215,7 @@ export async function fetchPublicInstagramPost(
   const raw = await requestTextLimited(result, 3_000_000);
   const parsed: unknown = JSON.parse(raw);
   const post = parsePublicInstagramPost(parsed);
-  if (!post) throw new Error("No public Instagram carousel in API response");
+  if (!post) throw new Error("Incomplete or unavailable Instagram media metadata");
   return post;
 }
 
