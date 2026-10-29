@@ -8,7 +8,7 @@
 /** Only unambiguous, explicitly enumerated synonyms are canonicalized. */
 const ALIAS_GROUPS = [
   ["Разработка ПО", "Разработка программного обеспечения", "Software development"],
-  ["Искусственный интеллект", "ИИ", "Artificial intelligence"],
+  ["Искусственный интеллект", "ИИ", "AI", "Artificial intelligence"],
   ["Машинное обучение", "Machine learning", "ML"],
   ["Нейросети", "Нейронные сети", "Neural networks"],
   ["3D-печать", "3D печать", "Аддитивное производство"],
