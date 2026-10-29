@@ -66,7 +66,10 @@ describe("titles independent of summarization", () => {
   });
   it("requests titles for text notes and parsed PDFs, not empty files", () => {
     expect(
-      needsGeneratedTitle({ title: null, text: { text: "План запуска продукта" } }),
+      needsGeneratedTitle({
+        title: null,
+        text: { text: "План запуска продукта" },
+      }),
     ).toBe(true);
     expect(
       needsGeneratedTitle({
