@@ -247,7 +247,8 @@ describe("tagging failure safety", () => {
     const infer = vi
       .fn()
       .mockResolvedValueOnce({
-        response: '{"tags":["Погашение задолженности","Кредиты","Финансовая грамотность","Долги","Бюджетирование"]}',
+        response:
+          '{"tags":["Погашение задолженности","Кредиты","Финансовая грамотность","Долги","Бюджетирование"]}',
       })
       .mockImplementationOnce(async () => {
         await new Promise((resolve) => setTimeout(resolve, 6000));
