@@ -52,11 +52,7 @@ export const tagsAppRouter = router({
             fromTagName: z.string(),
             intoTagId: z.string(),
             intoTagName: z.string(),
-            reason: z.enum([
-              "synonym",
-              "same_spelling",
-              "similar_spelling",
-            ]),
+            reason: z.enum(["synonym", "same_spelling", "similar_spelling"]),
             fromBookmarkCount: z.number(),
             intoBookmarkCount: z.number(),
             overlappingBookmarks: z.number(),
@@ -70,7 +66,10 @@ export const tagsAppRouter = router({
         .select({
           id: bookmarkTags.id,
           name: bookmarkTags.name,
-          usageCount: sql<number>`count(distinct ${tagsOnBookmarks.bookmarkId})`.mapWith(Number),
+          usageCount:
+            sql<number>`count(distinct ${tagsOnBookmarks.bookmarkId})`.mapWith(
+              Number,
+            ),
         })
         .from(bookmarkTags)
         .leftJoin(tagsOnBookmarks, eq(bookmarkTags.id, tagsOnBookmarks.tagId))
@@ -80,10 +79,11 @@ export const tagsAppRouter = router({
 
       const truncated = tags.length > 5000;
       const candidates = suggestTagMerges(tags.slice(0, 5000));
-      const ids = [...new Set(candidates.flatMap((item) => [
-        item.fromTagId,
-        item.intoTagId,
-      ]))];
+      const ids = [
+        ...new Set(
+          candidates.flatMap((item) => [item.fromTagId, item.intoTagId]),
+        ),
+      ];
       const attachments = ids.length
         ? await ctx.db
             .select({

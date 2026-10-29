@@ -73,7 +73,10 @@ export function TagAudit() {
         Аудит тегов
       </Button>
       {open && (
-        <section className="mt-3 rounded-xl border p-4" aria-label="Аудит тегов">
+        <section
+          className="mt-3 rounded-xl border p-4"
+          aria-label="Аудит тегов"
+        >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">Возможные дубли тегов</h2>
@@ -105,8 +108,8 @@ export function TagAudit() {
               </p>
               {audit.data.suggestions.length === 0 ? (
                 <p className="text-sm">
-                  Очевидных дублей не обнаружено. Это не исключает
-                  смысловых синонимов вне известного словаря.
+                  Очевидных дублей не обнаружено. Это не исключает смысловых
+                  синонимов вне известного словаря.
                 </p>
               ) : (
                 <div className="max-h-[55vh] space-y-2 overflow-y-auto">
@@ -178,8 +181,8 @@ export function TagAudit() {
                 <strong>{selected.affectedBookmarks}</strong>
               </p>
               <p className="text-muted-foreground">
-                Закладки и их содержимое не удаляются. Удаляется только
-                исходное имя тега, а его привязки переносятся на целевой тег.
+                Закладки и их содержимое не удаляются. Удаляется только исходное
+                имя тега, а его привязки переносятся на целевой тег.
               </p>
             </div>
           )}

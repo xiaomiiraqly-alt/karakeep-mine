@@ -1,7 +1,11 @@
 /** Conservative tag synonyms shared by AI generation and human review. */
 
 const ALIAS_GROUPS = [
-  ["Разработка ПО", "Разработка программного обеспечения", "Software development"],
+  [
+    "Разработка ПО",
+    "Разработка программного обеспечения",
+    "Software development",
+  ],
   ["Искусственный интеллект", "ИИ", "AI", "Artificial intelligence"],
   ["Машинное обучение", "Machine learning", "ML"],
   ["Нейросети", "Нейронные сети", "Neural networks"],

@@ -46,7 +46,10 @@ export function canonicalizeAITags(
     // Prefer an existing canonical spelling over an existing alias.
     const current = byConcept.get(key);
     const canonical = canonicalTagName(name);
-    if (!current || (canonical && tagSpellingKey(name) === tagSpellingKey(canonical))) {
+    if (
+      !current ||
+      (canonical && tagSpellingKey(name) === tagSpellingKey(canonical))
+    ) {
       byConcept.set(key, name);
     }
   }

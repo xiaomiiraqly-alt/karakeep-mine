@@ -1,8 +1,4 @@
-import {
-  canonicalTagName,
-  tagConceptKey,
-  tagSpellingKey,
-} from "./tagConcepts";
+import { canonicalTagName, tagConceptKey, tagSpellingKey } from "./tagConcepts";
 
 export interface AuditableTag {
   id: string;
