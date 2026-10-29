@@ -25,7 +25,7 @@ describe("titles independent of summarization", () => {
       }),
     ).toBe(true);
   });
-  it("preserves manual bookmark titles and ignores empty notes", () => {
+  it("preserves manually authored titles and ignores empty notes", () => {
     expect(
       needsGeneratedTitle({ title: "Мои расчёты", text: { text: "Долг" } }),
     ).toBe(false);
@@ -38,6 +38,51 @@ describe("titles independent of summarization", () => {
         },
       }),
     ).toBe(true);
+  });
+  it("requests visual titles for uploaded images without OCR text", () => {
+    expect(
+      needsGeneratedTitle({
+        title: null,
+        asset: { assetType: "image", fileName: "IMG_001.png", content: null },
+      }),
+    ).toBe(true);
+    expect(
+      needsGeneratedTitle({
+        title: "IMG_001.png",
+        asset: { assetType: "image", fileName: "IMG_001.png" },
+      }),
+    ).toBe(true);
+    expect(
+      needsGeneratedTitle({
+        title: "Современная деревянная пергола",
+        asset: { assetType: "image", fileName: "IMG_001.png" },
+      }),
+    ).toBe(false);
+    expect(
+      taggingTitleInstruction({
+        asset: { assetType: "image", fileName: "IMG_001.png" },
+      }),
+    ).toContain('"title" field');
+  });
+  it("requests titles for text notes and parsed PDFs, not empty files", () => {
+    expect(
+      needsGeneratedTitle({
+        title: null,
+        text: { text: "План запуска продукта" },
+      }),
+    ).toBe(true);
+    expect(
+      needsGeneratedTitle({
+        title: null,
+        asset: { assetType: "pdf", content: "Технические характеристики" },
+      }),
+    ).toBe(true);
+    expect(
+      needsGeneratedTitle({
+        title: null,
+        asset: { assetType: "pdf", content: "" },
+      }),
+    ).toBe(false);
   });
   it("requires factual titles from current content and rejects unusable responses", () => {
     expect(taggingTitleInstruction({ text: { text: "Долг" } })).toContain(
