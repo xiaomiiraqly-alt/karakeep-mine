@@ -35,6 +35,13 @@ import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 import { WebhooksService } from "@karakeep/trpc/models/webhooks.service";
 
 import { getInstagramVisualContext } from "./instagramVisual";
+import { canonicalizeAITags } from "./tagVocabulary";
+import { tagConceptKey } from "@karakeep/shared/utils/tagConcepts";
+import {
+  applySemanticTagMatches,
+  buildSemanticReusePrompt,
+  selectExistingTagCandidates,
+} from "./semanticTagReuse";
 
 /**
  * The maximum length of the relevant tag names to avoid bloating the inference context.
@@ -423,10 +430,83 @@ async function inferTags(
   }
 }
 
+/**
+ * Model-based semantic reuse is a SECOND filter after deterministic aliases:
+ * it runs only for tags that would otherwise be newly created.
+ */
+async function reuseExistingSemanticTags(
+  generatedTags: string[],
+  userId: string,
+  client: InferenceClient,
+  abortSignal: AbortSignal,
+  relevantTags?: string[],
+  curatedTagNames?: string[],
+): Promise<string[]> {
+  if (curatedTagNames?.length || !generatedTags.length) return generatedTags;
+  const existing = await db.query.bookmarkTags.findMany({
+    where: eq(bookmarkTags.userId, userId),
+    columns: { name: true },
+  });
+  const names = existing.map((item) => item.name);
+  if (!names.length) return generatedTags;
+  const normalized = canonicalizeAITags(generatedTags, names);
+  const known = new Set(names.map(tagConceptKey));
+  const newTags = normalized.filter((tag) => !known.has(tagConceptKey(tag)));
+  if (!newTags.length) return normalized;
+
+  const candidates = selectExistingTagCandidates(
+    newTags,
+    names,
+    relevantTags,
+    100,
+  );
+  if (!candidates.length) return normalized;
+
+  try {
+    const response = await client.inferFromText(
+      buildSemanticReusePrompt(newTags, candidates),
+      {
+        schema: z.object({
+          matches: z.array(
+            z.object({
+              suggested: z.string(),
+              existing: z.string().nullable(),
+            }),
+          ),
+        }),
+        abortSignal,
+      },
+    );
+    const parsed = z
+      .object({
+        matches: z.array(
+          z.object({
+            suggested: z.string(),
+            existing: z.string().nullable(),
+          }),
+        ),
+      })
+      .parse(parseJsonFromLLMResponse(response.response));
+    const preferred = applySemanticTagMatches(
+      normalized,
+      candidates,
+      parsed.matches,
+    );
+    return canonicalizeAITags(preferred, names);
+  } catch (error) {
+    if (abortSignal.aborted) throw error;
+    logger.warn(
+      `[inference] Could not compare new tags against existing vocabulary: ${error instanceof Error ? error.name : "unknown"}. Keeping deterministic tags.`,
+    );
+    return normalized;
+  }
+}
+
 async function connectTags(
   bookmarkId: string,
   inferredTags: string[],
   userId: string,
+  curatedTagNames?: string[],
 ) {
   if (inferredTags.length == 0) {
     return;
@@ -436,10 +516,23 @@ async function connectTags(
   // taking a WAL snapshot that another connection could invalidate.
   const res = await db.transaction(
     (tx) => {
-      // Attempt to match exiting tags with the new ones
+      const existingNames = tx.query.bookmarkTags
+        .findMany({
+          where: eq(bookmarkTags.userId, userId),
+          columns: { name: true },
+        })
+        .sync()
+        .map((tag) => tag.name);
+      const resolvedTags = canonicalizeAITags(
+        inferredTags,
+        existingNames,
+        curatedTagNames,
+      );
+
+      // Attempt to match existing tags with the normalized suggestions
       const { matchedTagIds, notFoundTagNames } = (() => {
         const { normalizeTag } = tagNormalizer();
-        const normalizedInferredTags = inferredTags.map((t) => ({
+        const normalizedInferredTags = resolvedTags.map((t) => ({
           originalTag: t,
           normalizedTag: normalizeTag(t),
         }));
@@ -726,7 +819,20 @@ export async function runTagging(
     return;
   }
 
-  await connectTags(bookmarkId, tags, bookmark.userId);
+  const preferredTags = await reuseExistingSemanticTags(
+    tags,
+    bookmark.userId,
+    inferenceClient,
+    job.abortSignal,
+    potentialRelevantTags,
+    curatedTagNames,
+  );
+  await connectTags(
+    bookmarkId,
+    preferredTags,
+    bookmark.userId,
+    curatedTagNames,
+  );
 
   // Propagate priority to child jobs
   const enqueueOpts: EnqueueOptions = {
