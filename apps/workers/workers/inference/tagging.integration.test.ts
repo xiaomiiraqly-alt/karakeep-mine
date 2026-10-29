@@ -12,7 +12,7 @@ import type { ZOpenAIRequest } from "@karakeep/shared-server";
 const state = vi.hoisted(() => ({
   db: {} as object,
   events: vi.fn(),
-  readAsset: state.readAsset,
+  readAsset: vi.fn(),
 }));
 vi.mock("@karakeep/db", () => ({
   db: new Proxy(
