@@ -1,8 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getBookmarkDomain } from "network";
 
 import { db } from "@karakeep/db";
-import { bookmarks, customPrompts, users } from "@karakeep/db/schema";
+import { bookmarkLinks, bookmarks, customPrompts, users } from "@karakeep/db/schema";
 import {
   addLogFields,
   setSpanAttributes,
@@ -18,11 +18,18 @@ import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 
 import { getInstagramVisualContext } from "./instagramVisual";
+import {
+  buildInstagramTitlePrompt,
+  cleanInstagramTitle,
+  isGenericInstagramTitle,
+  updateInstagramReaderHeading,
+} from "./instagramTitle";
+import { instagramCanonicalUrl } from "../utils/instagramUrls";
 
 async function fetchBookmarkDetailsForSummary(bookmarkId: string) {
   const bookmark = await db.query.bookmarks.findFirst({
     where: eq(bookmarks.id, bookmarkId),
-    columns: { id: true, userId: true, type: true },
+    columns: { id: true, userId: true, type: true, title: true },
     with: {
       link: {
         columns: {
@@ -198,6 +205,61 @@ URL: ${link.url ?? ""}
       modifiedAt: new Date(),
     })
     .where(eq(bookmarks.id, bookmarkId));
+
+  // The imported media already underwent AI summarization and image analysis.
+  // Use those observations for one short title inference rather than repeating
+  // costly image processing. Never overwrite an explicit user-defined title.
+  const instagramLink = bookmarkData.link;
+  if (
+    instagramLink?.url &&
+    instagramCanonicalUrl(instagramLink.url) &&
+    !bookmarkData.title &&
+    isGenericInstagramTitle(instagramLink.title)
+  ) {
+    try {
+      const proposed = await inferenceClient.inferFromText(
+        buildInstagramTitlePrompt({
+          language:
+            userSettings?.inferredTagLang ??
+            serverConfig.inference.inferredTagLang,
+          caption: instagramLink.description ?? "",
+          summary: summaryResult.response,
+          visualContext,
+        }),
+        { schema: null, abortSignal: job.abortSignal },
+      );
+      const title = cleanInstagramTitle(proposed.response ?? "");
+      if (title) {
+        // Compare-and-set: do not replace an intervening re-crawl or manual
+        // title edit while the model was generating the new title.
+        const condition =
+          instagramLink.title === null
+            ? isNull(bookmarkLinks.title)
+            : eq(bookmarkLinks.title, instagramLink.title);
+        const changed = await db
+          .update(bookmarkLinks)
+          .set({
+            title,
+            htmlContent: updateInstagramReaderHeading(
+              instagramLink.htmlContent,
+              title,
+            ),
+          })
+          .where(and(eq(bookmarkLinks.id, bookmarkId), condition))
+          .returning({ id: bookmarkLinks.id });
+        if (changed.length) {
+          logger.info(
+            `[inference][${jobId}] Generated descriptive Instagram title for bookmark "${bookmarkId}".`,
+          );
+        }
+      }
+    } catch (error) {
+      if (job.abortSignal.aborted) throw error;
+      logger.warn(
+        `[inference][${jobId}] Instagram title generation unavailable for bookmark "${bookmarkId}" (${error instanceof Error ? error.name : "unknown"}). Keeping original title.`,
+      );
+    }
+  }
 
   await triggerSearchReindex(bookmarkId, {
     priority: job.priority,
