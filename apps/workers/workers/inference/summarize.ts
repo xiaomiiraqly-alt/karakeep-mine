@@ -240,10 +240,14 @@ URL: ${link.url ?? ""}
           .update(bookmarkLinks)
           .set({
             title,
-            htmlContent: updateInstagramReaderHeading(
-              instagramLink.htmlContent,
-              title,
-            ),
+            ...(instagramLink.htmlContent
+              ? {
+                  htmlContent: updateInstagramReaderHeading(
+                    instagramLink.htmlContent,
+                    title,
+                  ),
+                }
+              : {}),
           })
           .where(and(eq(bookmarkLinks.id, bookmarkId), condition))
           .returning({ id: bookmarkLinks.id });
