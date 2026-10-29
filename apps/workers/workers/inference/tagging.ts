@@ -44,7 +44,7 @@ import {
   cleanBookmarkTitle,
 } from "./bookmarkTitle";
 import { getInstagramVisualContext } from "./instagramVisual";
-import { canonicalizeAITags } from "./tagVocabulary";
+import { canonicalizeAITags, matchExistingAITags } from "./tagVocabulary";
 import { tagConceptKey } from "@karakeep/shared/utils/tagConcepts";
 import {
   applySemanticTagMatches,
@@ -108,16 +108,6 @@ function parseJsonFromLLMResponse(response: string): unknown {
   }
 }
 
-function tagNormalizer() {
-  // This function needs to be in sync with the generated normalizedName column in bookmarkTags
-  function normalizeTag(tag: string) {
-    return tag.toLowerCase().replace(/[ \-_]/g, "");
-  }
-
-  return {
-    normalizeTag,
-  };
-}
 async function buildPrompt(
   bookmark: NonNullable<Awaited<ReturnType<typeof fetchBookmark>>>,
   tagStyle: ZTagStyle,
@@ -596,13 +586,13 @@ async function connectTags(
   // taking a WAL snapshot that another connection could invalidate.
   const res = await db.transaction(
     (tx) => {
-      const existingNames = tx.query.bookmarkTags
+      const existingTags = tx.query.bookmarkTags
         .findMany({
           where: eq(bookmarkTags.userId, userId),
-          columns: { name: true },
+          columns: { id: true, name: true },
         })
-        .sync()
-        .map((tag) => tag.name);
+        .sync();
+      const existingNames = existingTags.map((tag) => tag.name);
       const resolvedTags = canonicalizeAITags(
         inferredTags,
         existingNames,
@@ -611,38 +601,12 @@ async function connectTags(
 
       if (!resolvedTags.length) return { detachedTags: [], attachedTags: [] };
 
-      // Attempt to match existing tags with the normalized suggestions
-      const { matchedTagIds, notFoundTagNames } = (() => {
-        const { normalizeTag } = tagNormalizer();
-        const normalizedInferredTags = resolvedTags.map((t) => ({
-          originalTag: t,
-          normalizedTag: normalizeTag(t),
-        }));
-
-        const matchedTags = tx.query.bookmarkTags
-          .findMany({
-            where: and(
-              eq(bookmarkTags.userId, userId),
-              inArray(
-                bookmarkTags.normalizedName,
-                normalizedInferredTags.map((t) => t.normalizedTag),
-              ),
-            ),
-          })
-          .sync();
-
-        const matchedTagIds = matchedTags.map((r) => r.id);
-        const notFoundTagNames = normalizedInferredTags
-          .filter(
-            (t) =>
-              !matchedTags.some(
-                (mt) => normalizeTag(mt.name) === t.normalizedTag,
-              ),
-          )
-          .map((t) => t.originalTag);
-
-        return { matchedTagIds, notFoundTagNames };
-      })();
+      // SQLite lower() is ASCII-only. Match the user's vocabulary in JavaScript
+      // so Cyrillic and other Unicode names resolve to their existing IDs.
+      const { matchedTagIds, notFoundTagNames } = matchExistingAITags(
+        resolvedTags,
+        existingTags,
+      );
 
       // Create tags that didn't exist previously
       let newTagIds: string[] = [];
@@ -661,6 +625,9 @@ async function connectTags(
           .map((t) => t.id);
       }
 
+      const allTagIds = new Set([...matchedTagIds, ...newTagIds]);
+      if (!allTagIds.size) return { detachedTags: [], attachedTags: [] };
+
       // Delete old AI tags
       const detachedTags = tx
         .delete(tagsOnBookmarks)
@@ -672,8 +639,6 @@ async function connectTags(
         )
         .returning()
         .all();
-
-      const allTagIds = new Set([...matchedTagIds, ...newTagIds]);
 
       // Attach new ones
       let attachedTags: { tagId: string; bookmarkId: string }[] = [];

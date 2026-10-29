@@ -74,3 +74,26 @@ export function canonicalizeAITags(
   }
   return result;
 }
+
+/** SQLite lower() does not case-fold Cyrillic. Do not use normalizedName for AI reuse. */
+export function matchExistingAITags(
+  suggestions: readonly string[],
+  existing: readonly { id: string; name: string }[],
+): { matchedTagIds: string[]; notFoundTagNames: string[] } {
+  const byKey = new Map<string, string>();
+  for (const tag of existing) {
+    const key = tagSpellingKey(tag.name);
+    if (!byKey.has(key)) byKey.set(key, tag.id);
+  }
+  const ids = new Set<string>();
+  const newNames = new Map<string, string>();
+  for (const name of suggestions) {
+    const key = tagSpellingKey(name);
+    // Canonicalization supplies the exact chosen existing name when possible.
+    const match =
+      existing.find((tag) => tag.name === name)?.id ?? byKey.get(key);
+    if (match) ids.add(match);
+    else if (!newNames.has(key)) newNames.set(key, name);
+  }
+  return { matchedTagIds: [...ids], notFoundTagNames: [...newNames.values()] };
+}
