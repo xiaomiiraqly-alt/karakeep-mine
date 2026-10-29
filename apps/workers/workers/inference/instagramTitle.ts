@@ -58,7 +58,7 @@ export function cleanInstagramTitle(raw: string): string | null {
     /https?:\/\//i.test(title) ||
     /^[@#]/.test(title) ||
     isGenericInstagramTitle(title) ||
-    /^(?:нет (?:данных|информации)|неизвестно|no (?:information|title)|untitled)$/i.test(
+    /^(?:нет (?:данных|информации)|без названия|неизвестно|no (?:information|title)|untitled)$/i.test(
       title,
     )
   ) {
