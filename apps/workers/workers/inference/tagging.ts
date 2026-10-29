@@ -467,20 +467,26 @@ async function reuseExistingSemanticTags(
       buildSemanticReusePrompt(newTags, candidates),
       {
         schema: z.object({
-          matches: z.array(z.object({
-            suggested: z.string(),
-            existing: z.string().nullable(),
-          })),
+          matches: z.array(
+            z.object({
+              suggested: z.string(),
+              existing: z.string().nullable(),
+            }),
+          ),
         }),
         abortSignal,
       },
     );
-    const parsed = z.object({
-      matches: z.array(z.object({
-        suggested: z.string(),
-        existing: z.string().nullable(),
-      })),
-    }).parse(parseJsonFromLLMResponse(response.response));
+    const parsed = z
+      .object({
+        matches: z.array(
+          z.object({
+            suggested: z.string(),
+            existing: z.string().nullable(),
+          }),
+        ),
+      })
+      .parse(parseJsonFromLLMResponse(response.response));
     const preferred = applySemanticTagMatches(
       normalized,
       candidates,
@@ -821,7 +827,12 @@ export async function runTagging(
     potentialRelevantTags,
     curatedTagNames,
   );
-  await connectTags(bookmarkId, preferredTags, bookmark.userId, curatedTagNames);
+  await connectTags(
+    bookmarkId,
+    preferredTags,
+    bookmark.userId,
+    curatedTagNames,
+  );
 
   // Propagate priority to child jobs
   const enqueueOpts: EnqueueOptions = {
