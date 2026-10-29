@@ -400,7 +400,7 @@
         "userMessage": "automatic tagging for a read-it-later/bookmarking app"
       },
       "response": {
-        "content": "{\"tags\":[\"ai-generated\",\"karakeep\",\"worker-test\"]}"
+        "content": "{\"tags\":[\"ai-generated\",\"karakeep\",\"worker-test\",\"bookmarking\",\"automation\"]}"
       }
     },
     {
