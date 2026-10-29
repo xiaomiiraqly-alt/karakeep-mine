@@ -302,7 +302,7 @@ export async function fetchEmbeddedInstagramPost(
     runProxy,
   );
   if (!response.ok) {
-    response.body?.destroy();
+    response.body?.resume();
     throw new Error("Instagram browser page HTTP " + response.status);
   }
   const html = await response.text();
