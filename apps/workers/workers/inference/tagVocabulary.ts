@@ -7,7 +7,11 @@
 
 /** Only unambiguous, explicitly enumerated synonyms are canonicalized. */
 const ALIAS_GROUPS = [
-  ["Разработка ПО", "Разработка программного обеспечения", "Software development"],
+  [
+    "Разработка ПО",
+    "Разработка программного обеспечения",
+    "Software development",
+  ],
   ["Искусственный интеллект", "ИИ", "AI", "Artificial intelligence"],
   ["Машинное обучение", "Machine learning", "ML"],
   ["Нейросети", "Нейронные сети", "Neural networks"],
@@ -35,11 +39,7 @@ function conceptKey(name: string): string {
 }
 
 function cleanTag(value: string): string | null {
-  const tag = value
-    .trim()
-    .replace(/^#+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const tag = value.trim().replace(/^#+/, "").replace(/\s+/g, " ").trim();
 
   if (
     tag.length < 2 ||

@@ -28,7 +28,14 @@ describe("AI tag vocabulary", () => {
   it("strictly enforces curated tags and does not invent extras", () => {
     expect(
       canonicalizeAITags(
-        ["программное обеспечение", "Разработка программного обеспечения", "ИИ", "AI", "Машинное обучение", "CSS"],
+        [
+          "программное обеспечение",
+          "Разработка программного обеспечения",
+          "ИИ",
+          "AI",
+          "Машинное обучение",
+          "CSS",
+        ],
         ["Разработка программного обеспечения", "CSS"],
         ["Разработка ПО", "Искусственный интеллект"],
       ),
@@ -38,7 +45,12 @@ describe("AI tag vocabulary", () => {
   it("keeps related but distinct concepts separate", () => {
     expect(
       canonicalizeAITags(
-        ["Искусственный интеллект", "Машинное обучение", "Программирование", "Разработка ПО"],
+        [
+          "Искусственный интеллект",
+          "Машинное обучение",
+          "Программирование",
+          "Разработка ПО",
+        ],
         [],
       ),
     ).toEqual([
@@ -52,7 +64,17 @@ describe("AI tag vocabulary", () => {
   it("filters malformed labels and limits AI output to five useful tags", () => {
     expect(
       canonicalizeAITags(
-        ["#ChatGPT", "  разработка   ПО ", "<script>", "https://example.org", "Нейросети", "AI", "Kubernetes", "Docker", "Python"],
+        [
+          "#ChatGPT",
+          "  разработка   ПО ",
+          "<script>",
+          "https://example.org",
+          "Нейросети",
+          "AI",
+          "Kubernetes",
+          "Docker",
+          "Python",
+        ],
         [],
       ),
     ).toEqual([
