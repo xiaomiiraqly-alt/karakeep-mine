@@ -475,20 +475,18 @@ async function run(req: DequeuedJob<AssetPreprocessingRequest>) {
     groupId: bookmark.userId,
   };
   if (!isFixMode || anythingChanged) {
+    // Run visual AI tagging/title generation as soon as the image has been
+    // processed, without making it wait for a separate embedding job.
+    await OpenAIQueue.enqueue(
+      { bookmarkId, type: "tag" },
+      enqueueOpts,
+    );
     if (serverConfig.embedding.enableAutoIndexing) {
       await EmbeddingsQueue.enqueue(
         {
           bookmarkId,
           type: "embed",
-          runTaggingOnComplete: true,
-        },
-        enqueueOpts,
-      );
-    } else {
-      await OpenAIQueue.enqueue(
-        {
-          bookmarkId,
-          type: "tag",
+          runTaggingOnComplete: false,
         },
         enqueueOpts,
       );
