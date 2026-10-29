@@ -35,6 +35,7 @@ import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 import { WebhooksService } from "@karakeep/trpc/models/webhooks.service";
 
 import { getInstagramVisualContext } from "./instagramVisual";
+import { canonicalizeAITags } from "./tagVocabulary";
 
 /**
  * The maximum length of the relevant tag names to avoid bloating the inference context.
@@ -427,6 +428,7 @@ async function connectTags(
   bookmarkId: string,
   inferredTags: string[],
   userId: string,
+  curatedTagNames?: string[],
 ) {
   if (inferredTags.length == 0) {
     return;
@@ -436,10 +438,23 @@ async function connectTags(
   // taking a WAL snapshot that another connection could invalidate.
   const res = await db.transaction(
     (tx) => {
-      // Attempt to match exiting tags with the new ones
+      const existingNames = tx.query.bookmarkTags
+        .findMany({
+          where: eq(bookmarkTags.userId, userId),
+          columns: { name: true },
+        })
+        .sync()
+        .map((tag) => tag.name);
+      const resolvedTags = canonicalizeAITags(
+        inferredTags,
+        existingNames,
+        curatedTagNames,
+      );
+
+      // Attempt to match existing tags with the normalized suggestions
       const { matchedTagIds, notFoundTagNames } = (() => {
         const { normalizeTag } = tagNormalizer();
-        const normalizedInferredTags = inferredTags.map((t) => ({
+        const normalizedInferredTags = resolvedTags.map((t) => ({
           originalTag: t,
           normalizedTag: normalizeTag(t),
         }));
@@ -726,7 +741,7 @@ export async function runTagging(
     return;
   }
 
-  await connectTags(bookmarkId, tags, bookmark.userId);
+  await connectTags(bookmarkId, tags, bookmark.userId, curatedTagNames);
 
   // Propagate priority to child jobs
   const enqueueOpts: EnqueueOptions = {
