@@ -74,7 +74,8 @@ export function parsePublicInstagramPost(
     Number.isInteger(declaredCount) &&
     declaredCount > 1 &&
     slides.length !== declaredCount
-  ) return null;
+  )
+    return null;
   const candidates = slides.length ? slides : [post];
   const media: PublicInstagramMedia[] = [];
   for (const entry of candidates) {
@@ -158,9 +159,9 @@ export async function fetchPublicInstagramPost(
   // Instagram's non-authentication cookies; stripping mid/ig_did can cause
   // the GraphQL endpoint to reject a request that a browser would accept.
   const allowedCookies = new Set(["csrftoken", "mid", "ig_did", "datr", "wd"]);
-  const cookies = (home.headers.getSetCookie?.() ?? [
-    home.headers.get("set-cookie") ?? "",
-  ])
+  const cookies = (
+    home.headers.getSetCookie?.() ?? [home.headers.get("set-cookie") ?? ""]
+  )
     .map((header) => /^([a-zA-Z0-9_]+)=([^;]*)/.exec(header))
     .filter((match): match is RegExpExecArray => Boolean(match))
     .filter((match) => allowedCookies.has(match[1]))
@@ -200,15 +201,12 @@ export async function fetchPublicInstagramPost(
     await postResponse.body?.cancel();
     signal.throwIfAborted();
     const query = new URLSearchParams({ doc_id: DOC_ID, variables });
-    result = await fetch(
-      "https://www.instagram.com/graphql/query/?" + query,
-      {
-        method: "GET",
-        headers,
-        redirect: "manual",
-        signal: signalWithTimeout(signal, 20_000),
-      },
-    );
+    result = await fetch("https://www.instagram.com/graphql/query/?" + query, {
+      method: "GET",
+      headers,
+      redirect: "manual",
+      signal: signalWithTimeout(signal, 20_000),
+    });
   }
   if (!result.ok) {
     await result.body?.cancel();
@@ -217,10 +215,10 @@ export async function fetchPublicInstagramPost(
   const raw = await requestTextLimited(result, 3_000_000);
   const parsed: unknown = JSON.parse(raw);
   const post = parsePublicInstagramPost(parsed);
-  if (!post) throw new Error("Incomplete or unavailable Instagram media metadata");
+  if (!post)
+    throw new Error("Incomplete or unavailable Instagram media metadata");
   return post;
 }
-
 
 /**
  * Instagram can embed full media JSON into a browser-navigation HTML response,
@@ -235,7 +233,8 @@ export function parseEmbeddedInstagramPost(
     /<script\b(?=[^>]*\bdata-sjs\b)(?=[^>]*\btype=["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/gi,
   );
   for (const [, source] of scripts) {
-    if (!source.includes('"media_type"') || !source.includes(shortcode)) continue;
+    if (!source.includes('"media_type"') || !source.includes(shortcode))
+      continue;
     let root: unknown;
     try {
       root = JSON.parse(source);
@@ -307,7 +306,8 @@ export async function fetchEmbeddedInstagramPost(
   }
   const html = await response.text();
   const result = parseEmbeddedInstagramPost(html, shortcode);
-  if (!result) throw new Error("Instagram page contains no verified post media");
+  if (!result)
+    throw new Error("Instagram page contains no verified post media");
   return result;
 }
 
@@ -320,7 +320,13 @@ export async function downloadPublicInstagramPost(
   signal: AbortSignal,
 ): Promise<number> {
   const post = await fetchPublicInstagramPost(shortcode, signal);
-  return downloadInstagramMediaBatch(post, folder, fileLimit, batchLimit, signal);
+  return downloadInstagramMediaBatch(
+    post,
+    folder,
+    fileLimit,
+    batchLimit,
+    signal,
+  );
 }
 
 /** The HTML and GraphQL extraction paths share one validated CDN downloader. */
