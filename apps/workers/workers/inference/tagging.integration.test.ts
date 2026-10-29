@@ -96,11 +96,11 @@ afterEach(() => sqlite?.close());
 describe("full tagging persistence against migrated SQLite", () => {
   it("stores an AI title and topical tags for a newly created text note", async () => {
     const proposedTags = [
-      "Финансовое планирование",
-      "Бюджет",
-      "Кредиты",
-      "Платежи",
-      "Личные финансы",
+      "Хэллоуин",
+      "Севастополь",
+      "Рестораны",
+      "Бары",
+      "Мероприятия",
     ];
     const client = {
       inferFromText: vi.fn(async (prompt: string) => {
