@@ -95,6 +95,48 @@ beforeEach(() => {
 afterEach(() => sqlite?.close());
 
 describe("full tagging persistence against migrated SQLite", () => {
+  it("lets content-aware completion replace irrelevant first-pass candidates", async () => {
+    const initial = ["Севастополь", "Производство", "Веб Сервисы"];
+    const corrected = [
+      "Севастополь",
+      "Морепродукты",
+      "Продуктовые магазины",
+      "Рыба",
+      "Доставка продуктов",
+    ];
+    const names = [...new Set([...initial, ...corrected])];
+    db.insert(schema.bookmarkTags)
+      .values(names.map((name, i) => ({ id: "t" + i, userId: "u", name })))
+      .run();
+    db.update(schema.bookmarkTexts)
+      .set({
+        text: "Продуктовый магазин морепродуктов в Севастополе: рыба с доставкой продуктов",
+      })
+      .run();
+    const infer = vi
+      .fn()
+      .mockResolvedValueOnce({ response: JSON.stringify({ tags: initial }) })
+      .mockImplementationOnce(async (prompt: string) => {
+        expect(prompt).toContain("магазин морепродуктов");
+        expect(prompt).toContain("Revise or remove previous candidates");
+        return { response: JSON.stringify({ tags: corrected }) };
+      });
+    expect(
+      await runTagging("b", request(), {
+        inferFromText: infer,
+      } as unknown as InferenceClient),
+    ).toBeUndefined();
+    const saved = db
+      .select({ name: schema.bookmarkTags.name })
+      .from(schema.tagsOnBookmarks)
+      .innerJoin(
+        schema.bookmarkTags,
+        eq(schema.tagsOnBookmarks.tagId, schema.bookmarkTags.id),
+      )
+      .all();
+    expect(saved.map((tag) => tag.name).sort()).toEqual([...corrected].sort());
+    expect(infer).toHaveBeenCalledTimes(2);
+  });
   it.each(["text", "image"] as const)(
     "completes a short %s result to five existing thematic tags",
     async (kind) => {

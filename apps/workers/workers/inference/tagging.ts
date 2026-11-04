@@ -1050,7 +1050,7 @@ export async function runTagging(
             if (!additional?.tags.length) return preferredTags;
             // Apply the same vocabulary checks to every additional proposal.
             return await reuseExistingSemanticTags(
-              [...preferredTags, ...additional.tags],
+              additional.tags,
               bookmark.userId,
               inferenceClient,
               signal,
