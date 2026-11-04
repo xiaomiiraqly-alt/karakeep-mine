@@ -33,7 +33,7 @@ function cleanTag(value: string): string | null {
  * - In curated mode only explicitly selected tag names may be used.
  * - In open mode existing user tags are preferred, including safe synonyms.
  * - Otherwise a canonical spelling is chosen for known synonym groups.
- * - No more than 5 distinct concepts are attached per inference run.
+ * - Keep up to 8 distinct concepts so semantic collapse need not force a retry.
  */
 export function canonicalizeAITags(
   generated: string[],
@@ -70,7 +70,7 @@ export function canonicalizeAITags(
     const resolved = preferred ?? canonicalTagName(tag);
     seen.add(key);
     result.push(resolved);
-    if (result.length >= 5) break;
+    if (result.length >= 8) break;
   }
   return result;
 }

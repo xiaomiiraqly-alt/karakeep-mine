@@ -117,7 +117,7 @@ describe("tagging failure safety", () => {
     "preserves saved tags for empty/invalid generated labels: %s",
     async (response) => {
       const infer = vi.fn(async () => ({ response }));
-      await runTagging("b", job(), client(infer));
+      expect(await runTagging("b", job(), client(infer))).toBe("incomplete");
       expect(mocks.transaction).not.toHaveBeenCalled();
       expect(mocks.reindex).not.toHaveBeenCalled();
     },
@@ -165,14 +165,16 @@ describe("tagging failure safety", () => {
     ).rejects.toThrow("expected JSON");
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
-  it("does not overwrite tags when inference returns fewer than five concepts", async () => {
+  it("does not count synonyms as five or report a short result as complete", async () => {
     mocks.findTags.mockResolvedValue([{ name: "Искусственный интеллект" }]);
-    const infer = vi.fn(async () => ({ response: '{"tags":["ИИ"]}' }));
-    await expect(runTagging("b", job(), client(infer))).rejects.toThrow(
-      "fewer than five",
-    );
-    expect(infer).toHaveBeenCalledTimes(1);
-    expect(mocks.transaction).not.toHaveBeenCalled();
+    mocks.transaction.mockResolvedValue({ detachedTags: [], attachedTags: [] });
+    const infer = vi.fn(async (_prompt: string) => ({
+      response: '{"tags":["ИИ","AI","Искусственный интеллект"]}',
+    }));
+    expect(await runTagging("b", job(), client(infer))).toBe("incomplete");
+    expect(infer).toHaveBeenCalledTimes(2);
+    expect(infer.mock.calls[1][0]).toContain("Complete the analysis");
+    expect(mocks.transaction).toHaveBeenCalled();
   });
   it("propagates queue cancellation during optional lookup", async () => {
     const request = job();
@@ -188,6 +190,35 @@ describe("tagging failure safety", () => {
     );
     expect(infer).not.toHaveBeenCalled();
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it("does not start completion after its reserved time budget is exhausted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    mocks.transaction.mockResolvedValue({ detachedTags: [], attachedTags: [] });
+    const infer = vi.fn(async () => {
+      vi.setSystemTime(30000);
+      return { response: '{"tags":["Долги"]}' };
+    });
+    expect(await runTagging("b", job(), client(infer))).toBe("incomplete");
+    expect(infer).toHaveBeenCalledTimes(1);
+  });
+  it("propagates cancellation during completion instead of claiming success", async () => {
+    const controller = new AbortController();
+    const request = job();
+    request.abortSignal = controller.signal;
+    mocks.transaction.mockResolvedValue({ detachedTags: [], attachedTags: [] });
+    const infer = vi
+      .fn()
+      .mockResolvedValueOnce({ response: '{"tags":["Долги"]}' })
+      .mockImplementationOnce(async () => {
+        controller.abort(new Error("cancelled completion"));
+        throw controller.signal.reason;
+      });
+    await expect(runTagging("b", request, client(infer))).rejects.toThrow(
+      "cancelled completion",
+    );
+    expect(infer).toHaveBeenCalledTimes(2);
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
   });
   it("skips unmaintained vector indexes but still supplies existing vocabulary", async () => {
     serverConfig.embedding.enableAutoIndexing = false;

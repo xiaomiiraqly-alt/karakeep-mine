@@ -1,5 +1,6 @@
 import path from "node:path";
 import Database from "better-sqlite3";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,6 +95,247 @@ beforeEach(() => {
 afterEach(() => sqlite?.close());
 
 describe("full tagging persistence against migrated SQLite", () => {
+  it("lets content-aware completion replace irrelevant first-pass candidates", async () => {
+    const initial = ["Севастополь", "Производство", "Веб Сервисы"];
+    const corrected = [
+      "Севастополь",
+      "Морепродукты",
+      "Продуктовые магазины",
+      "Рыба",
+      "Доставка продуктов",
+    ];
+    const names = [...new Set([...initial, ...corrected])];
+    db.insert(schema.bookmarkTags)
+      .values(names.map((name, i) => ({ id: "t" + i, userId: "u", name })))
+      .run();
+    db.update(schema.bookmarkTexts)
+      .set({
+        text: "Продуктовый магазин морепродуктов в Севастополе: рыба с доставкой продуктов",
+      })
+      .run();
+    const infer = vi
+      .fn()
+      .mockResolvedValueOnce({ response: JSON.stringify({ tags: initial }) })
+      .mockImplementationOnce(async (prompt: string) => {
+        expect(prompt).toContain("магазин морепродуктов");
+        expect(prompt).toContain("Revise or remove previous candidates");
+        return { response: JSON.stringify({ tags: corrected }) };
+      });
+    expect(
+      await runTagging("b", request(), {
+        inferFromText: infer,
+      } as unknown as InferenceClient),
+    ).toBeUndefined();
+    const saved = db
+      .select({ name: schema.bookmarkTags.name })
+      .from(schema.tagsOnBookmarks)
+      .innerJoin(
+        schema.bookmarkTags,
+        eq(schema.tagsOnBookmarks.tagId, schema.bookmarkTags.id),
+      )
+      .all();
+    expect(saved.map((tag) => tag.name).sort()).toEqual([...corrected].sort());
+    expect(infer).toHaveBeenCalledTimes(2);
+  });
+  it.each(["text", "image"] as const)(
+    "completes a short %s result to five existing thematic tags",
+    async (kind) => {
+      const names = [
+        "Перголы",
+        "Ландшафтный дизайн",
+        "Архитектура",
+        "Дерево",
+        "Террасы",
+      ];
+      db.insert(schema.bookmarkTags)
+        .values([
+          ...names.map((name, i) => ({ id: "t" + i, userId: "u", name })),
+          { id: "old", userId: "u", name: "Старый тег" },
+          { id: "human", userId: "u", name: "Ручной тег" },
+        ])
+        .run();
+      db.insert(schema.tagsOnBookmarks)
+        .values([
+          { bookmarkId: "b", tagId: "old", attachedBy: "ai" },
+          { bookmarkId: "b", tagId: "human", attachedBy: "human" },
+        ])
+        .run();
+      if (kind === "image") {
+        db.delete(schema.bookmarkTexts).run();
+        db.update(schema.bookmarks).set({ type: BookmarkTypes.ASSET }).run();
+        db.insert(schema.bookmarkAssets)
+          .values({
+            id: "b",
+            assetType: "image",
+            assetId: "image-1",
+            fileName: "IMG_001.png",
+            content: null,
+          })
+          .run();
+        state.readAsset.mockResolvedValue({
+          asset: Buffer.from([137, 80, 78, 71]),
+          metadata: { contentType: "image/png" },
+        });
+      } else {
+        db.update(schema.bookmarkTexts)
+          .set({
+            text: "Деревянная пергола над террасой: архитектура и ландшафтный дизайн",
+          })
+          .run();
+      }
+      const infer = vi.fn(async (prompt: string) => {
+        expect(prompt).toContain('"title" field');
+        if (kind === "text")
+          expect(prompt).toContain("Деревянная пергола над террасой");
+        return {
+          response: JSON.stringify({
+            title: "Деревянная пергола над террасой",
+            tags: prompt.includes("Complete the analysis")
+              ? names
+              : names.slice(0, 3),
+          }),
+        };
+      });
+      const result = await runTagging("b", request(), {
+        inferFromText: infer,
+        inferFromImage: infer,
+      } as unknown as InferenceClient);
+      expect(result).toBeUndefined();
+      expect(infer).toHaveBeenCalledTimes(2);
+      expect(infer.mock.calls[1][0]).toContain("at least five distinct");
+      const saved = db.select().from(schema.tagsOnBookmarks).all();
+      expect(saved).toHaveLength(6);
+      expect(saved.some((tag) => tag.tagId === "old")).toBe(false);
+      expect(saved.find((tag) => tag.tagId === "human")?.attachedBy).toBe(
+        "human",
+      );
+      expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(7);
+      expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
+        "Деревянная пергола над террасой",
+      );
+    },
+  );
+
+  it.each([1, 2, 3, 4])(
+    "keeps %i verified tags and saved links but reports incomplete after one completion pass",
+    async (count) => {
+      const names = ["Хэллоуин", "Севастополь", "Рестораны", "Бары"].slice(
+        0,
+        count,
+      );
+      db.insert(schema.bookmarkTags)
+        .values([
+          ...names.map((name, i) => ({ id: "t" + i, userId: "u", name })),
+          { id: "old", userId: "u", name: "Старый тег" },
+          { id: "human", userId: "u", name: "Ручной тег" },
+        ])
+        .run();
+      db.insert(schema.tagsOnBookmarks)
+        .values([
+          { bookmarkId: "b", tagId: "old", attachedBy: "ai" },
+          { bookmarkId: "b", tagId: "human", attachedBy: "human" },
+        ])
+        .run();
+      const client = inference(names);
+      expect(await runTagging("b", request(), client)).toBe("incomplete");
+      expect(client.inferFromText).toHaveBeenCalledTimes(2);
+      const saved = db.select().from(schema.tagsOnBookmarks).all();
+      expect(saved).toHaveLength(count + 2);
+      expect(saved.find((tag) => tag.tagId === "human")?.attachedBy).toBe(
+        "human",
+      );
+      expect(saved.some((tag) => tag.tagId === "old")).toBe(true);
+      expect(
+        state.events.mock.calls
+          .flatMap((call) => call[2])
+          .some((event) => event.type === "tagRemoved"),
+      ).toBe(false);
+    },
+  );
+
+  it.each(["provider error", "unchecked new tags"])(
+    "preserves verified progress when completion encounters %s",
+    async (failure) => {
+      const names = ["Хэллоуин", "Севастополь", "Рестораны"];
+      db.insert(schema.bookmarkTags)
+        .values(names.map((name, i) => ({ id: "t" + i, userId: "u", name })))
+        .run();
+      const infer = vi
+        .fn()
+        .mockResolvedValueOnce({ response: JSON.stringify({ tags: names }) });
+      if (failure === "provider error") {
+        infer.mockRejectedValueOnce(new Error("429"));
+      } else {
+        infer
+          .mockResolvedValueOnce({
+            response: JSON.stringify({
+              tags: [...names, "Бары", "Мероприятия"],
+            }),
+          })
+          .mockResolvedValueOnce({ response: '{"matches":[]}' });
+      }
+      expect(
+        await runTagging("b", request(), {
+          inferFromText: infer,
+        } as unknown as InferenceClient),
+      ).toBe("incomplete");
+      expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(3);
+      expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(3);
+      expect(infer).toHaveBeenCalledTimes(failure === "provider error" ? 2 : 3);
+    },
+  );
+
+  it("respects curated restrictions and reports incomplete if fewer than five concepts are allowed", async () => {
+    db.insert(schema.bookmarkTags)
+      .values({ id: "chosen", userId: "u", name: "Хэллоуин" })
+      .run();
+    db.update(schema.users)
+      .set({ curatedTagIds: ["chosen"] })
+      .where(eq(schema.users.id, "u"))
+      .run();
+    const client = inference([
+      "Хэллоуин",
+      "VPN",
+      "Нейросети",
+      "Docker",
+      "Разработка ПО",
+    ]);
+    expect(await runTagging("b", request(), client)).toBe("incomplete");
+    expect(client.inferFromText).toHaveBeenCalledTimes(1);
+    expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(1);
+    expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(1);
+  });
+
+  it("creates completion tags only after checking that existing vocabulary has no equivalent", async () => {
+    const initial = ["Хэллоуин", "Севастополь", "Рестораны"];
+    db.insert(schema.bookmarkTags)
+      .values(initial.map((name, i) => ({ id: "t" + i, userId: "u", name })))
+      .run();
+    const infer = vi
+      .fn()
+      .mockResolvedValueOnce({ response: JSON.stringify({ tags: initial }) })
+      .mockResolvedValueOnce({
+        response: JSON.stringify({ tags: [...initial, "Бары", "Мероприятия"] }),
+      })
+      .mockResolvedValueOnce({
+        response: JSON.stringify({
+          matches: [
+            { suggested: "Бары", existing: null },
+            { suggested: "Мероприятия", existing: null },
+          ],
+        }),
+      });
+    expect(
+      await runTagging("b", request(), {
+        inferFromText: infer,
+      } as unknown as InferenceClient),
+    ).toBeUndefined();
+    expect(infer).toHaveBeenCalledTimes(3);
+    expect(infer.mock.calls[2][0]).toContain("exact semantic synonym");
+    expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(5);
+    expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(5);
+  });
+
   it("stores an AI title and topical tags for a newly created text note", async () => {
     const proposedTags = [
       "Хэллоуин",
