@@ -576,6 +576,7 @@ async function connectTags(
   inferredTags: string[],
   userId: string,
   curatedTagNames?: string[],
+  preserveExistingAITags = false,
 ) {
   if (inferredTags.length == 0) {
     return;
@@ -628,17 +629,19 @@ async function connectTags(
       if (!allTagIds.size) return { detachedTags: [], attachedTags: [] };
 
       // Delete old AI tags
-      const detachedTags = tx
-        .delete(tagsOnBookmarks)
-        .where(
-          and(
-            eq(tagsOnBookmarks.attachedBy, "ai"),
-            eq(tagsOnBookmarks.bookmarkId, bookmarkId),
-            notInArray(tagsOnBookmarks.tagId, [...allTagIds]),
-          ),
-        )
-        .returning()
-        .all();
+      const detachedTags = preserveExistingAITags
+        ? []
+        : tx
+            .delete(tagsOnBookmarks)
+            .where(
+              and(
+                eq(tagsOnBookmarks.attachedBy, "ai"),
+                eq(tagsOnBookmarks.bookmarkId, bookmarkId),
+                notInArray(tagsOnBookmarks.tagId, [...allTagIds]),
+              ),
+            )
+            .returning()
+            .all();
 
       // Attach new ones
       let attachedTags: { tagId: string; bookmarkId: string }[] = [];
@@ -989,20 +992,18 @@ export async function runTagging(
   );
   job.abortSignal.throwIfAborted();
   if (!preferredTags.length) return;
-  // Semantic reuse and spelling normalization may collapse model proposals.
-  // Do not replace a useful existing tag set with fewer than five distinct
-  // concepts: retry inference rather than inventing unrelated filler labels.
+  // Five concepts are a prompt target, not a persistence requirement. Save a
+  // smaller valid result without retrying or removing previously saved AI tags.
+  // Count after semantic reuse, which can collapse equivalent model proposals.
   const distinctConcepts = new Set(preferredTags.map(tagConceptKey));
-  if (distinctConcepts.size < 5 && !curatedTagNames?.length) {
-    throw new Error(
-      "AI provided fewer than five distinct content-based tags; saved tags preserved for retry",
-    );
-  }
+  const preserveExistingAITags =
+    distinctConcepts.size < 5 && !curatedTagNames?.length;
   await connectTags(
     bookmarkId,
     preferredTags,
     bookmark.userId,
     curatedTagNames,
+    preserveExistingAITags,
   );
 
   // Propagate priority to child jobs

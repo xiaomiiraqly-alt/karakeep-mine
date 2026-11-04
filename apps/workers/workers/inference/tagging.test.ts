@@ -165,14 +165,19 @@ describe("tagging failure safety", () => {
     ).rejects.toThrow("expected JSON");
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
-  it("does not overwrite tags when inference returns fewer than five concepts", async () => {
+  it("persists a short result after alias collapse without retrying inference", async () => {
     mocks.findTags.mockResolvedValue([{ name: "Искусственный интеллект" }]);
-    const infer = vi.fn(async () => ({ response: '{"tags":["ИИ"]}' }));
-    await expect(runTagging("b", job(), client(infer))).rejects.toThrow(
-      "fewer than five",
-    );
+    mocks.transaction.mockResolvedValueOnce({
+      detachedTags: [],
+      attachedTags: [],
+    });
+    const infer = vi.fn(async () => ({
+      response: '{"tags":["ИИ","Искусственный интеллект"]}',
+    }));
+    await runTagging("b", job(), client(infer));
     expect(infer).toHaveBeenCalledTimes(1);
-    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.reindex).toHaveBeenCalledTimes(1);
   });
   it("propagates queue cancellation during optional lookup", async () => {
     const request = job();

@@ -1,5 +1,6 @@
 import path from "node:path";
 import Database from "better-sqlite3";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,75 +95,81 @@ beforeEach(() => {
 afterEach(() => sqlite?.close());
 
 describe("full tagging persistence against migrated SQLite", () => {
-  it("stores an AI title and topical tags for a newly created text note", async () => {
-    const proposedTags = [
-      "Хэллоуин",
-      "Севастополь",
-      "Рестораны",
-      "Бары",
-      "Мероприятия",
-    ];
-    const client = {
-      inferFromText: vi.fn(async (prompt: string) => {
+  it.each([3, 5])(
+    "stores an AI title and %i tags for a new text note",
+    async (count) => {
+      const proposedTags = [
+        "Хэллоуин",
+        "Севастополь",
+        "Рестораны",
+        "Бары",
+        "Мероприятия",
+      ];
+      const client = {
+        inferFromText: vi.fn(async (prompt: string) => {
+          expect(prompt).toContain('"title" field');
+          expect(prompt).toContain("Хэллоуин в Севастополе");
+          return {
+            response: JSON.stringify({
+              tags: proposedTags.slice(0, count),
+              title: "Хэллоуин в Севастополе: рестораны и бары",
+            }),
+          };
+        }),
+      } as unknown as InferenceClient;
+      await runTagging("b", request(), client);
+      expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
+        "Хэллоуин в Севастополе: рестораны и бары",
+      );
+      expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(count);
+    },
+  );
+
+  it.each([3, 5])(
+    "stores a visual title and %i tags without OCR text",
+    async (count) => {
+      db.delete(schema.bookmarkTexts).run();
+      db.update(schema.bookmarks)
+        .set({ type: BookmarkTypes.ASSET, title: null })
+        .run();
+      db.insert(schema.bookmarkAssets)
+        .values({
+          id: "b",
+          assetType: "image",
+          assetId: "image-1",
+          fileName: "IMG_001.png",
+          content: null,
+        })
+        .run();
+      state.readAsset.mockResolvedValue({
+        asset: Buffer.from([137, 80, 78, 71]),
+        metadata: { contentType: "image/png" },
+      });
+      const inferFromImage = vi.fn(async (prompt: string) => {
         expect(prompt).toContain('"title" field');
-        expect(prompt).toContain("Хэллоуин в Севастополе");
         return {
           response: JSON.stringify({
-            tags: proposedTags,
-            title: "Хэллоуин в Севастополе: рестораны и бары",
+            title: "Современная пергола с деревянными ламелями",
+            tags: [
+              "Перголы",
+              "Ландшафтный дизайн",
+              "Архитектура",
+              "Дерево",
+              "Террасы",
+            ].slice(0, count),
           }),
         };
-      }),
-    } as unknown as InferenceClient;
-    await runTagging("b", request(), client);
-    expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
-      "Хэллоуин в Севастополе: рестораны и бары",
-    );
-    expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(5);
-  });
-
-  it("stores a visual AI title and tags for an image without OCR text", async () => {
-    db.delete(schema.bookmarkTexts).run();
-    db.update(schema.bookmarks)
-      .set({ type: BookmarkTypes.ASSET, title: null })
-      .run();
-    db.insert(schema.bookmarkAssets)
-      .values({
-        id: "b",
-        assetType: "image",
-        assetId: "image-1",
-        fileName: "IMG_001.png",
-        content: null,
-      })
-      .run();
-    state.readAsset.mockResolvedValue({
-      asset: Buffer.from([137, 80, 78, 71]),
-      metadata: { contentType: "image/png" },
-    });
-    const inferFromImage = vi.fn(async (prompt: string) => {
-      expect(prompt).toContain('"title" field');
-      return {
-        response: JSON.stringify({
-          title: "Современная пергола с деревянными ламелями",
-          tags: [
-            "Перголы",
-            "Ландшафтный дизайн",
-            "Архитектура",
-            "Дерево",
-            "Террасы",
-          ],
-        }),
-      };
-    });
-    await runTagging("b", request(), {
-      inferFromImage,
-    } as unknown as InferenceClient);
-    expect(inferFromImage).toHaveBeenCalledTimes(1);
-    expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
-      "Современная пергола с деревянными ламелями",
-    );
-    expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(5);
-  });
+      });
+      await runTagging("b", request(), {
+        inferFromImage,
+      } as unknown as InferenceClient);
+      expect(inferFromImage).toHaveBeenCalledTimes(1);
+      expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
+        "Современная пергола с деревянными ламелями",
+      );
+      expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(count);
+    },
+  );
 
   it("reuses four Cyrillic IDs, preserves human tags and is idempotent", async () => {
     const names = [
@@ -216,6 +223,70 @@ describe("full tagging persistence against migrated SQLite", () => {
     expect(saved.every((item) => item.tagId !== "foreign")).toBe(true);
     expect(db.select().from(schema.bookmarkTags).all()).toHaveLength(6);
   });
+  it.each([1, 2, 3, 4, 5])(
+    "persists %i tags without retries and preserves saved tags for short results",
+    async (count) => {
+      const names = [
+        "Хэллоуин",
+        "Севастополь",
+        "Рестораны",
+        "Бары",
+        "Мероприятия",
+      ];
+      db.insert(schema.bookmarkTags)
+        .values([
+          { id: "saved-ai", userId: "u", name: "Старый тег" },
+          { id: "human", userId: "u", name: "Ручной тег" },
+          ...names.map((name, index) => ({
+            id: "candidate-" + index,
+            userId: "u",
+            name,
+          })),
+        ])
+        .run();
+      db.insert(schema.tagsOnBookmarks)
+        .values([
+          { bookmarkId: "b", tagId: "saved-ai", attachedBy: "ai" },
+          { bookmarkId: "b", tagId: "human", attachedBy: "human" },
+        ])
+        .run();
+      const client = inference(names.slice(0, count));
+      await runTagging("b", request(), client);
+      const saved = db.select().from(schema.tagsOnBookmarks).all();
+      expect(saved).toHaveLength(count + (count < 5 ? 2 : 1));
+      expect(saved.some((row) => row.tagId === "saved-ai")).toBe(count < 5);
+      expect(saved.find((row) => row.tagId === "human")?.attachedBy).toBe("human");
+      expect(client.inferFromText).toHaveBeenCalledTimes(1);
+      const removed = state.events.mock.calls.flatMap((call) =>
+        call[2].filter((event: { type: string }) => event.type === "tagRemoved"),
+      );
+      expect(removed).toHaveLength(count < 5 ? 0 : 1);
+      await runTagging("b", request(), client);
+      expect(db.select().from(schema.tagsOnBookmarks).all()).toEqual(saved);
+      expect(client.inferFromText).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("still replaces old AI tags for a short curated selection", async () => {
+    db.insert(schema.bookmarkTags)
+      .values([
+        { id: "selected", userId: "u", name: "Хэллоуин" },
+        { id: "old", userId: "u", name: "Старый тег" },
+      ])
+      .run();
+    db.update(schema.users)
+      .set({ curatedTagIds: ["selected"] })
+      .where(eq(schema.users.id, "u"))
+      .run();
+    db.insert(schema.tagsOnBookmarks)
+      .values({ bookmarkId: "b", tagId: "old", attachedBy: "ai" })
+      .run();
+    await runTagging("b", request(), inference(["Хэллоуин"]));
+    expect(db.select().from(schema.tagsOnBookmarks).all()).toMatchObject([
+      { tagId: "selected", attachedBy: "ai" },
+    ]);
+  });
+
   it("preserves saved AI tags on empty output", async () => {
     db.insert(schema.bookmarkTags)
       .values({ id: "old", userId: "u", name: "Мероприятия" })
