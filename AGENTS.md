@@ -51,6 +51,10 @@ The project is organized into `apps` and `packages`:
 
 ## Other info
 
+- Tagging changes must follow [docs/tagging-policy.md](docs/tagging-policy.md).
+  In particular, fewer than five distinct topical concepts is an incomplete
+  result, not successful tagging.
+
 - This project uses shadcn/ui. The shadcn components in the web app are in `packages/web/components/ui`.
 - This project uses Tailwind CSS.
 - For the mobile app, we use [expo](https://expo.dev/).

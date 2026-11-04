@@ -61,7 +61,7 @@ describe("AI tag vocabulary", () => {
     ]);
   });
 
-  it("filters malformed labels and limits AI output to five useful tags", () => {
+  it("filters malformed labels and retains up to eight distinct useful tags", () => {
     expect(
       canonicalizeAITags(
         [
@@ -74,6 +74,8 @@ describe("AI tag vocabulary", () => {
           "Kubernetes",
           "Docker",
           "Python",
+          "Rust",
+          "Go",
         ],
         [],
       ),
@@ -83,6 +85,9 @@ describe("AI tag vocabulary", () => {
       "Нейросети",
       "Искусственный интеллект",
       "Kubernetes",
+      "Docker",
+      "Python",
+      "Rust",
     ]);
   });
 

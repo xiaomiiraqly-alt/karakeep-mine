@@ -40,7 +40,7 @@ First examine the attached image content. Only then suggest relevant tags that d
     - A Cloudflare/security check, CAPTCHA, bot check, anti-DDoS challenge, browser verification, or access-blocked page
     - Boilerplate content such as cookie consent, login walls, GDPR notices, navigation menus, or a blank/empty image
   In these cases, return an empty tags array. Do not tag the failure/interstitial page itself.
-- If the image contains enough distinct subjects, return at least 5 (prefer 5-8) meaningful, non-duplicate tags. Never add filler just to reach the count.
+- A completed analysis requires at least 5 (prefer 5-8) distinct topical tags, grounded in the actual image. Re-examine the visible subjects, purposes and concepts before answering. Never invent topics, duplicate synonyms or add filler to reach the count. A shorter grounded answer will be treated as incomplete, not successful tagging.
 - If there are no good tags, leave the array empty.
 ${curatedInstruction}
 ${potentialRelevantTagsInstruction}
@@ -81,7 +81,7 @@ First examine the entire available TEXT_CONTENT (including any visual observatio
     - A Cloudflare/security check, CAPTCHA, bot check, anti-DDoS challenge, browser verification, or access-blocked page
     - Boilerplate content such as cookie consent, login walls, GDPR notices, navigation menus, or empty pages
   If useful metadata or other legitimate content remains, generate tags using only that information. Otherwise, return an empty tags array. Never tag the failure, interstitial, or boilerplate content itself.
-- If the saved content supports enough distinct themes, return at least 5 (prefer 5-8) relevant, non-duplicate tags. Never fabricate tags or tag site navigation to reach the count.
+- A completed analysis requires at least 5 (prefer 5-8) distinct topical tags, grounded in the entire saved content. Re-examine its central subjects, purposes and concepts before answering. Never fabricate topics, duplicate synonyms or tag site navigation to reach the count. A shorter grounded answer will be treated as incomplete, not successful tagging.
 - If there are no good tags, leave the array empty.
 ${curatedInstruction}
 ${potentialRelevantTagsInstruction}

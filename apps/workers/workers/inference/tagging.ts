@@ -47,6 +47,12 @@ import { getInstagramVisualContext } from "./instagramVisual";
 import { canonicalizeAITags, matchExistingAITags } from "./tagVocabulary";
 import { tagConceptKey } from "@karakeep/shared/utils/tagConcepts";
 import {
+  buildTagCompletionInstruction,
+  distinctTagCount,
+  MIN_TOPICAL_TAGS,
+} from "./taggingPolicy";
+import type { TaggingOutcome } from "./taggingPolicy";
+import {
   applySemanticTagMatches,
   buildSemanticReusePrompt,
   selectExistingTagCandidates,
@@ -488,14 +494,17 @@ async function reuseExistingSemanticTags(
   relevantTags?: string[],
   curatedTagNames?: string[],
 ): Promise<string[]> {
-  if (curatedTagNames?.length || !generatedTags.length) return generatedTags;
+  if (curatedTagNames?.length) {
+    return canonicalizeAITags(generatedTags, curatedTagNames, curatedTagNames);
+  }
+  if (!generatedTags.length) return [];
   const existing = await db.query.bookmarkTags.findMany({
     where: eq(bookmarkTags.userId, userId),
     columns: { name: true },
   });
   const names = existing.map((item) => item.name);
-  if (!names.length) return generatedTags;
   const normalized = canonicalizeAITags(generatedTags, names);
+  if (!names.length) return normalized;
   const known = new Set(names.map(tagConceptKey));
   const newTags = normalized.filter((tag) => !known.has(tagConceptKey(tag)));
   if (!newTags.length) return normalized;
@@ -576,6 +585,7 @@ async function connectTags(
   inferredTags: string[],
   userId: string,
   curatedTagNames?: string[],
+  preserveExistingAITags = false,
 ) {
   if (inferredTags.length == 0) {
     return;
@@ -627,18 +637,20 @@ async function connectTags(
       const allTagIds = new Set([...matchedTagIds, ...newTagIds]);
       if (!allTagIds.size) return { detachedTags: [], attachedTags: [] };
 
-      // Delete old AI tags
-      const detachedTags = tx
-        .delete(tagsOnBookmarks)
-        .where(
-          and(
-            eq(tagsOnBookmarks.attachedBy, "ai"),
-            eq(tagsOnBookmarks.bookmarkId, bookmarkId),
-            notInArray(tagsOnBookmarks.tagId, [...allTagIds]),
-          ),
-        )
-        .returning()
-        .all();
+      // An incomplete result may add verified tags but must not erase saved ones.
+      const detachedTags = preserveExistingAITags
+        ? []
+        : tx
+            .delete(tagsOnBookmarks)
+            .where(
+              and(
+                eq(tagsOnBookmarks.attachedBy, "ai"),
+                eq(tagsOnBookmarks.bookmarkId, bookmarkId),
+                notInArray(tagsOnBookmarks.tagId, [...allTagIds]),
+              ),
+            )
+            .returning()
+            .all();
 
       // Attach new ones
       let attachedTags: { tagId: string; bookmarkId: string }[] = [];
@@ -817,7 +829,10 @@ export async function runTagging(
   bookmarkId: string,
   job: DequeuedJob<ZOpenAIRequest>,
   inferenceClient: InferenceClient,
-) {
+): Promise<TaggingOutcome> {
+  // Reserve time to persist the outcome before the queue's overall timeout.
+  const completionDeadline =
+    Date.now() + serverConfig.inference.jobTimeoutSec * 1000 * 0.9;
   if (!serverConfig.inference.enableAutoTagging) {
     logger.debug(
       `[inference][${job.id}] Skipping tagging job for bookmark with id "${bookmarkId}" because it's disabled in the config.`,
@@ -976,10 +991,10 @@ export async function runTagging(
     logger.info(
       `[inference][${jobId}] Skipping tagging for bookmark "${bookmark.id}" due to missing content or empty tags; preserving existing tags.`,
     );
-    return;
+    return result === null ? undefined : "incomplete";
   }
 
-  const preferredTags = await reuseExistingSemanticTags(
+  let preferredTags = await reuseExistingSemanticTags(
     result.tags,
     bookmark.userId,
     inferenceClient,
@@ -988,15 +1003,89 @@ export async function runTagging(
     curatedTagNames,
   );
   job.abortSignal.throwIfAborted();
-  if (!preferredTags.length) return;
-  // Semantic reuse and spelling normalization may collapse model proposals.
-  // Do not replace a useful existing tag set with fewer than five distinct
-  // concepts: retry inference rather than inventing unrelated filler labels.
-  const distinctConcepts = new Set(preferredTags.map(tagConceptKey));
-  if (distinctConcepts.size < 5 && !curatedTagNames?.length) {
-    throw new Error(
-      "AI provided fewer than five distinct content-based tags; saved tags preserved for retry",
+  if (distinctTagCount(preferredTags) < MIN_TOPICAL_TAGS) {
+    // Keep verified progress, but never report fewer than five concepts as done.
+    await connectTags(
+      bookmarkId,
+      preferredTags,
+      bookmark.userId,
+      curatedTagNames,
+      true,
     );
+    await triggerSearchReindex(bookmarkId, {
+      priority: job.priority,
+      groupId: bookmark.userId,
+    });
+    const budgetMs = Math.min(
+      completionDeadline - Date.now(),
+      serverConfig.inference.jobTimeoutSec * 1000 * 0.35,
+    );
+    const curatedLimit =
+      curatedTagNames?.length &&
+      distinctTagCount(curatedTagNames) < MIN_TOPICAL_TAGS;
+    if (!curatedLimit && budgetMs >= 1000) {
+      try {
+        logger.info(
+          `[inference][${jobId}] Completing topical tags for "${bookmarkId}" with one content-aware pass.`,
+        );
+        const completed = await withTaggingDeadline(
+          job.abortSignal,
+          budgetMs,
+          async (signal) => {
+            const additional = await inferTags(
+              jobId,
+              bookmark,
+              inferenceClient,
+              signal,
+              userSettings?.tagStyle ?? "as-generated",
+              userSettings?.inferredTagLang ??
+                serverConfig.inference.inferredTagLang,
+              curatedTagNames,
+              potentialRelevantTags,
+              [
+                similarBookmarkContext,
+                buildTagCompletionInstruction(preferredTags),
+              ].join("\n"),
+            );
+            if (!additional?.tags.length) return preferredTags;
+            // Apply the same vocabulary checks to every additional proposal.
+            return await reuseExistingSemanticTags(
+              [...preferredTags, ...additional.tags],
+              bookmark.userId,
+              inferenceClient,
+              signal,
+              potentialRelevantTags,
+              curatedTagNames,
+            );
+          },
+        );
+        job.abortSignal.throwIfAborted();
+        preferredTags = completed;
+      } catch (error) {
+        job.abortSignal.throwIfAborted();
+        logger.warn(
+          `[inference][${jobId}] Tag completion unavailable (${error instanceof Error ? error.name : "unknown"}); retaining verified tags and marking tagging incomplete.`,
+        );
+      }
+    }
+    if (distinctTagCount(preferredTags) < MIN_TOPICAL_TAGS) {
+      job.abortSignal.throwIfAborted();
+      await connectTags(
+        bookmarkId,
+        preferredTags,
+        bookmark.userId,
+        curatedTagNames,
+        true,
+      );
+      await triggerSearchReindex(bookmarkId, {
+        priority: job.priority,
+        groupId: bookmark.userId,
+      });
+      logger.warn(
+        `[inference][${jobId}] Incomplete tagging for "${bookmarkId}": ${distinctTagCount(preferredTags)}/${MIN_TOPICAL_TAGS} distinct topical tags; saved tags preserved. No automatic full-job retry.`,
+      );
+      return "incomplete";
+    }
   }
   await connectTags(
     bookmarkId,

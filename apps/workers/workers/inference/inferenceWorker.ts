@@ -17,6 +17,7 @@ import { DequeuedJob, getQueueClient } from "@karakeep/shared/queueing";
 
 import { runSummarization } from "./summarize";
 import { runTagging } from "./tagging";
+import type { TaggingOutcome } from "./taggingPolicy";
 
 async function attemptMarkStatus(
   jobData: object | undefined,
@@ -44,14 +45,26 @@ async function attemptMarkStatus(
 export class OpenAiWorker {
   static async build() {
     logger.info("Starting inference worker ...");
-    const worker = (await getQueueClient())!.createRunner<ZOpenAIRequest>(
+    const worker = (await getQueueClient())!.createRunner<
+      ZOpenAIRequest,
+      TaggingOutcome
+    >(
       OpenAIQueue,
       {
         run: withWorkerTracing(
           "inferenceWorker.run",
           withWorkerEventLog("inferenceWorker.run", runOpenAI),
         ),
-        onComplete: async (job) => {
+        onComplete: async (job, result) => {
+          if (result === "incomplete") {
+            workerStatsCounter.labels("inference", "failed").inc();
+            workerStatsCounter.labels("inference", "failed_permanent").inc();
+            logger.warn(
+              `[inference][${job.id}] Tagging incomplete; marking bookmark as failed without repeating the entire inference job.`,
+            );
+            await attemptMarkStatus(job.data, "failure");
+            return;
+          }
           workerStatsCounter.labels("inference", "completed").inc();
           const jobId = job.id;
           logger.info(`[inference][${jobId}] Completed successfully`);
@@ -116,8 +129,7 @@ async function runOpenAI(job: DequeuedJob<ZOpenAIRequest>) {
       await runSummarization(bookmarkId, job, inferenceClient);
       break;
     case "tag":
-      await runTagging(bookmarkId, job, inferenceClient);
-      break;
+      return await runTagging(bookmarkId, job, inferenceClient);
     default:
       throw new Error(`Unknown inference type: ${request.data.type}`);
   }
