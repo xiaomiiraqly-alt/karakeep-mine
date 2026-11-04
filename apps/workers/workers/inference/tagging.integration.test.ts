@@ -121,7 +121,9 @@ describe("full tagging persistence against migrated SQLite", () => {
       expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
         "Хэллоуин в Севастополе: рестораны и бары",
       );
-      expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(count);
+      expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(
+        count,
+      );
     },
   );
 
@@ -167,7 +169,9 @@ describe("full tagging persistence against migrated SQLite", () => {
       expect(db.select().from(schema.bookmarks).all()[0].title).toBe(
         "Современная пергола с деревянными ламелями",
       );
-      expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(count);
+      expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(
+        count,
+      );
     },
   );
 
@@ -255,10 +259,14 @@ describe("full tagging persistence against migrated SQLite", () => {
       const saved = db.select().from(schema.tagsOnBookmarks).all();
       expect(saved).toHaveLength(count + (count < 5 ? 2 : 1));
       expect(saved.some((row) => row.tagId === "saved-ai")).toBe(count < 5);
-      expect(saved.find((row) => row.tagId === "human")?.attachedBy).toBe("human");
+      expect(saved.find((row) => row.tagId === "human")?.attachedBy).toBe(
+        "human",
+      );
       expect(client.inferFromText).toHaveBeenCalledTimes(1);
       const removed = state.events.mock.calls.flatMap((call) =>
-        call[2].filter((event: { type: string }) => event.type === "tagRemoved"),
+        call[2].filter(
+          (event: { type: string }) => event.type === "tagRemoved",
+        ),
       );
       expect(removed).toHaveLength(count < 5 ? 0 : 1);
       await runTagging("b", request(), client);
