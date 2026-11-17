@@ -254,6 +254,14 @@ export async function runSummarization(
           instagramLink.title === null
             ? isNull(bookmarkLinks.title)
             : eq(bookmarkLinks.title, instagramLink.title);
+        // Guard the reader body as well: a concurrent re-crawl may replace
+        // HTML while leaving the generic title unchanged.
+        const conditions = [eq(bookmarkLinks.id, bookmarkId), condition];
+        if (instagramLink.htmlContent) {
+          conditions.push(
+            eq(bookmarkLinks.htmlContent, instagramLink.htmlContent),
+          );
+        }
         const changed = await db
           .update(bookmarkLinks)
           .set({
@@ -267,7 +275,7 @@ export async function runSummarization(
                 }
               : {}),
           })
-          .where(and(eq(bookmarkLinks.id, bookmarkId), condition))
+          .where(and(...conditions))
           .returning({ id: bookmarkLinks.id });
         if (changed.length) {
           logger.info(
