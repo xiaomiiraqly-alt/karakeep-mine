@@ -39,6 +39,7 @@ export function isInstagramCdnUrl(value: string): boolean {
       url.protocol === "https:" &&
       !url.username &&
       !url.password &&
+      !url.port &&
       (host === "cdninstagram.com" ||
         host.endsWith(".cdninstagram.com") ||
         host === "fbcdn.net" ||
