@@ -362,7 +362,6 @@ describe("embedded browser HTML extraction", () => {
   });
 });
 
-
 describe("Instagram CDN fetch boundary", () => {
   it("rejects a forged internal URL before any network request", async () => {
     const folder = await fs.mkdtemp(
