@@ -137,6 +137,7 @@ describe("anonymous Instagram GraphQL extractor", () => {
       false,
     );
     expect(isInstagramCdnUrl("https://127.0.0.1/internal")).toBe(false);
+    expect(isInstagramCdnUrl("https://cdninstagram.com:8443/x")).toBe(false);
     expect(isInstagramCdnUrl("https://cdninstagram.com@127.0.0.1/")).toBe(
       false,
     );
