@@ -1,0 +1,43 @@
+name: One-time canonical formatter
+on:
+  push:
+    branches: [upstream-v035-provisional]
+    paths: [.github/workflows/one-time-format.yml]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.3.1
+        with:
+          persist-credentials: true
+      - uses: $/tooling/github/setup
+      - name: Format exactly the files reported by CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec oxfmt --write \
+            apps/workers/workers/inference/summarize.test.ts \
+            apps/workers/workers/utils/instagramPublic.test.ts \
+            apps/workers/workers/utils/instagramUrls.ts
+          pnpm exec oxfmt --check \
+            apps/workers/workers/inference/summarize.test.ts \
+            apps/workers/workers/utils/instagramPublic.test.ts \
+            apps/workers/workers/utils/instagramUrls.ts
+      - name: Commit canonical formatting without modifying other files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            apps/workers/workers/inference/summarize.test.ts \
+            apps/workers/workers/utils/instagramPublic.test.ts \
+            apps/workers/workers/utils/instagramUrls.ts
+          if ! git diff --cached --quiet; then
+            git commit -m "style: apply canonical oxfmt formatting to audit regressions"
+            git push origin HEAD:upstream-v035-provisional
+          else
+            echo "Files already canonically formatted."
+          fi
