@@ -7,7 +7,7 @@ settings:
 overrides:
   tinypool: 2.1.2
   linkify-it: 5.0.2
-  markdown-it: 14.3.2
+  markdown-it: 14.3.3
   tailwindcss@3.4.1>postcss-selector-parser: 6.1.4
   openapi-to-postmanv2@6>js-yaml: 4.3.2
   openapi-to-postmanv2@6>yaml: 1.10.3
@@ -34,10 +34,10 @@ importers:
   .:
     devDependencies:
       '@types/node':
-        specifier: ^24.10.3
+        specifier: ^24
         version: 24.10.3
       husky:
-        specifier: ^9.1.7
+        specifier: ^9.0.11
         version: 9.1.7
       oxfmt:
         specifier: ^0.72.0
@@ -55,13 +55,13 @@ importers:
   apps/browser-extension:
     dependencies:
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared
       '@karakeep/shared-react':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared-react
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/trpc
       '@radix-ui/react-dialog':
         specifier: ^1.1.14
@@ -130,17 +130,17 @@ importers:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.1)
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@crxjs/vite-plugin':
         specifier: 3.0.0
         version: 3.0.0(supports-color@8.1.1)(vite@8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3))
       '@karakeep/tailwind-config':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/tailwind
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@types/chrome':
         specifier: ^0.0.260
@@ -155,7 +155,7 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(@swc/helpers@0.5.23)(vite@8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3))
       autoprefixer:
-        specifier: ^10.5.4
+        specifier: ^10.4.17
         version: 10.5.4(postcss@8.5.28)
       postcss:
         specifier: ^8.5.28
@@ -167,22 +167,22 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.3.8
+        specifier: ^8.3.0
         version: 8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3)
 
   apps/cli:
     devDependencies:
       '@commander-js/extra-typings':
-        specifier: ^12.1.0
+        specifier: ^12.0.1
         version: 12.1.0(commander@12.1.0)
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/trpc
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@trpc/client':
         specifier: ^11.9.0
@@ -191,31 +191,31 @@ importers:
         specifier: ^11.9.0
         version: 11.9.0(typescript@5.9.3)
       '@tsconfig/node22':
-        specifier: ^22.0.2
+        specifier: ^22.0.0
         version: 22.0.2
       chalk:
-        specifier: ^5.6.2
+        specifier: ^5.3.0
         version: 5.6.2
       commander:
-        specifier: ^12.1.0
+        specifier: ^12.0.0
         version: 12.1.0
       superjson:
         specifier: ^2.2.1
         version: 2.2.1
       table:
-        specifier: ^6.9.0
+        specifier: ^6.8.2
         version: 6.9.0
       tsx:
         specifier: ^4.23.13
         version: 4.23.13
       vite:
-        specifier: ^8.3.8
+        specifier: ^8.3.0
         version: 8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3)
       vite-tsconfig-paths:
         specifier: ^6.1.1
         version: 6.1.1(supports-color@8.1.1)(typescript@5.9.3)(vite@8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3))
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
 
   apps/landing:
@@ -258,13 +258,13 @@ importers:
         version: 1.0.7(tailwindcss@3.4.1)
     devDependencies:
       '@karakeep/tailwind-config':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/tailwind
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@tailwindcss/typography':
-        specifier: ^0.5.16
+        specifier: ^0.5.10
         version: 0.5.16(tailwindcss@3.4.1)
       '@types/react':
         specifier: 19.3.0
@@ -273,7 +273,7 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
       autoprefixer:
-        specifier: ^10.5.4
+        specifier: ^10.4.17
         version: 10.5.4(postcss@8.5.28)
       portless:
         specifier: ^0.10.3
@@ -288,7 +288,7 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.3.8
+        specifier: ^8.3.0
         version: 8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3)
       vite-plugin-svgr:
         specifier: ^4.3.0
@@ -300,23 +300,23 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
       '@modelcontextprotocol/server':
-        specifier: ^2.4.0
+        specifier: ^2.0.0
         version: 2.4.0
       turndown:
         specifier: ^7.2.0
         version: 7.2.0
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@tsconfig/node22':
-        specifier: ^22.0.2
+        specifier: ^22.0.0
         version: 22.0.2
       '@types/turndown':
         specifier: ^5.0.5
@@ -325,7 +325,7 @@ importers:
         specifier: ^4.23.13
         version: 4.23.13
       vite:
-        specifier: ^8.3.8
+        specifier: ^8.3.0
         version: 8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3)
       vite-tsconfig-paths:
         specifier: ^6.1.1
@@ -343,19 +343,19 @@ importers:
         specifier: ~58.0.2
         version: 58.0.2(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       '@expo/metro-runtime':
-        specifier: ~58.0.17
+        specifier: ~58.0.15
         version: 58.0.17(@expo/log-box@58.0.15)(expo@58.0.25)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       '@expo/vector-icons':
         specifier: ^15.0.3
         version: 15.0.3(expo-font@58.0.12)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared
       '@karakeep/shared-react':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared-react
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/trpc
       '@react-native-async-storage/async-storage':
         specifier: 2.2.0
@@ -373,7 +373,7 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       '@sentry/react-native':
-        specifier: ^8.18.0
+        specifier: ^8.14.0
         version: 8.18.0(@expo/env@2.6.0(supports-color@8.1.1))(dotenv@16.4.5)(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       '@shopify/flash-list':
         specifier: 2.3.2
@@ -394,13 +394,13 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
       expo:
-        specifier: ~58.0.25
+        specifier: ~58.0.19
         version: 58.0.25(8a4de7b7779d642dcd0c89d47cd42b9f)
       expo-blur:
-        specifier: ~58.0.6
+        specifier: ~58.0.5
         version: 58.0.6(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       expo-build-properties:
-        specifier: ~58.0.12
+        specifier: ~58.0.11
         version: 58.0.12(expo@58.0.25)
       expo-checkbox:
         specifier: ~58.0.2
@@ -409,31 +409,31 @@ importers:
         specifier: ~58.0.4
         version: 58.0.4(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       expo-constants:
-        specifier: ~58.0.16
+        specifier: ~58.0.13
         version: 58.0.16(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@7.0.2)
       expo-dev-client:
-        specifier: ~58.0.20
+        specifier: ~58.0.15
         version: 58.0.20(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))
       expo-file-system:
-        specifier: ~58.0.13
+        specifier: ~58.0.11
         version: 58.0.13(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))
       expo-glass-effect:
         specifier: ~58.0.5
         version: 58.0.5(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       expo-haptics:
-        specifier: ~58.0.8
+        specifier: ~58.0.7
         version: 58.0.8(expo@58.0.25)
       expo-image:
-        specifier: ~58.0.18
+        specifier: ~58.0.17
         version: 58.0.18(expo@58.0.25)(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       expo-image-picker:
         specifier: ~58.0.10
         version: 58.0.10(expo@58.0.25)
       expo-keep-awake:
-        specifier: ~58.0.4
+        specifier: ~58.0.3
         version: 58.0.4(expo@58.0.25)(react@19.3.0)
       expo-linking:
-        specifier: ~58.0.17
+        specifier: ~58.0.14
         version: 58.0.17(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@7.0.2)
       expo-localization:
         specifier: ~58.0.5
@@ -442,31 +442,31 @@ importers:
         specifier: ~58.0.4
         version: 58.0.4(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)
       expo-network:
-        specifier: ~58.0.5
+        specifier: ~58.0.4
         version: 58.0.5(expo@58.0.25)(react@19.3.0)
       expo-router:
-        specifier: ~58.0.31
+        specifier: ~58.0.26
         version: 58.0.31(529faa8b9ef831929d94cd9f16ff880a)
       expo-secure-store:
-        specifier: ~58.0.3
+        specifier: ~58.0.2
         version: 58.0.3(expo@58.0.25)
       expo-share-intent:
         specifier: ^9.0.0
         version: 9.0.0(patch_hash=7a77009406d73f95d574ad39bece24ba765ae7cf262cf3e9767321e416b81f02)(expo-constants@58.0.16)(expo-linking@58.0.17)(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@7.0.2)
       expo-sharing:
-        specifier: ~58.0.23
+        specifier: ~58.0.20
         version: 58.0.23(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@7.0.2)
       expo-status-bar:
-        specifier: ~58.0.5
+        specifier: ~58.0.4
         version: 58.0.5(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       expo-symbols:
-        specifier: ~58.0.5
+        specifier: ~58.0.4
         version: 58.0.5(expo-font@58.0.12)(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       expo-system-ui:
-        specifier: ~58.0.7
+        specifier: ~58.0.6
         version: 58.0.7(expo@58.0.25)(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(supports-color@8.1.1)
       expo-web-browser:
-        specifier: ~58.0.8
+        specifier: ~58.0.6
         version: 58.0.8(expo@58.0.25)(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))
       i18next:
         specifier: ^23.16.5
@@ -517,7 +517,7 @@ importers:
         specifier: ^4.3.2
         version: 4.3.2(react-native-nitro-modules@0.37.2(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0))(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       react-native-nitro-modules:
-        specifier: ^0.37.2
+        specifier: ^0.37.1
         version: 0.37.2(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       react-native-pdf:
         specifier: 7.0.3
@@ -535,7 +535,7 @@ importers:
         specifier: ~5.11.1
         version: 5.11.1(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       react-native-screens:
-        specifier: ~4.30.1
+        specifier: ~4.30.0
         version: 4.30.1(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       react-native-svg:
         specifier: 15.16.0
@@ -559,23 +559,23 @@ importers:
         specifier: ^2.2.1
         version: 2.2.1
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
       zustand:
-        specifier: ^5.0.8
+        specifier: ^5.0.5
         version: 5.0.8(@types/react@19.3.0)(immer@11.1.15)(react@19.3.0)(use-sync-external-store@1.5.0(react@19.3.0))
     devDependencies:
       '@babel/core':
         specifier: ^7.29.7
         version: 7.29.7(supports-color@8.1.1)
       '@karakeep/tailwind-config':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/tailwind
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@tailwindcss/typography':
-        specifier: ^0.5.16
+        specifier: ^0.5.10
         version: 0.5.16(tailwindcss@3.4.1)
       '@types/react':
         specifier: 19.3.0
@@ -584,7 +584,7 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
       metro-cache:
-        specifier: ^0.87.3
+        specifier: ^0.87.1
         version: 0.87.3(supports-color@8.1.1)
       tailwindcss:
         specifier: ^3.4.1
@@ -608,22 +608,22 @@ importers:
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.62.0(react@19.3.0))
       '@karakeep/api':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/api
       '@karakeep/db':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/db
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared
       '@karakeep/shared-react':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared-react
       '@karakeep/shared-server':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared-server
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/trpc
       '@lexical/code':
         specifier: ^0.20.2
@@ -749,7 +749,7 @@ importers:
         specifier: ^1.0.16
         version: 1.0.16
       hono:
-        specifier: ^4.13.16
+        specifier: ^4.13.8
         version: 4.13.16
       i18next:
         specifier: ^23.16.5
@@ -779,7 +779,7 @@ importers:
         specifier: 19.3.0
         version: 19.3.0
       react-day-picker:
-        specifier: ^9.9.0
+        specifier: ^9.7.0
         version: 9.9.0(react@19.3.0)
       react-dom:
         specifier: 19.3.0
@@ -794,7 +794,7 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(react@19.3.0)
       react-hook-form:
-        specifier: ^7.62.0
+        specifier: ^7.57.0
         version: 7.62.0(react@19.3.0)
       react-hotkeys-hook:
         specifier: ^5.2.1
@@ -836,17 +836,17 @@ importers:
         specifier: ^2.2.1
         version: 2.2.1
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
       zustand:
-        specifier: ^5.0.8
+        specifier: ^5.0.5
         version: 5.0.8(@types/react@19.3.0)(immer@11.1.15)(react@19.3.0)(use-sync-external-store@1.5.0(react@19.3.0))
     devDependencies:
       '@karakeep/tailwind-config':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/tailwind
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@next/bundle-analyzer':
         specifier: 16.4.1
@@ -867,13 +867,13 @@ importers:
         specifier: ^15.5.13
         version: 15.5.13
       autoprefixer:
-        specifier: ^10.5.4
+        specifier: ^10.4.17
         version: 10.5.4(postcss@8.5.28)
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
       jsdom:
-        specifier: ^24.1.3
+        specifier: ^24.0.0
         version: 24.1.3(supports-color@8.1.1)
       portless:
         specifier: ^0.10.3
@@ -897,7 +897,7 @@ importers:
         specifier: ^16.6.0
         version: 16.6.0
       '@ghostery/adblocker-playwright':
-        specifier: ^2.7.0
+        specifier: ^2.5.1
         version: 2.7.0(playwright@1.59.1)
       '@hono/node-server':
         specifier: ^2.1.6
@@ -906,19 +906,19 @@ importers:
         specifier: ^1.0.2
         version: 1.0.2(hono@4.13.16)(prom-client@15.1.3)
       '@karakeep/db':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/db
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared
       '@karakeep/shared-server':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared-server
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/trpc
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@mozilla/readability':
         specifier: ^0.6.0
@@ -927,13 +927,13 @@ importers:
         specifier: ^2.2.2
         version: 2.2.2
       '@remix-run/multipart-parser':
-        specifier: ^1.1.1
+        specifier: ^1.0.0
         version: 1.1.1
       '@trpc/server':
         specifier: ^11.9.0
         version: 11.9.0(typescript@7.0.2)
       '@tsconfig/node22':
-        specifier: ^22.0.2
+        specifier: ^22.0.0
         version: 22.0.2
       archiver:
         specifier: ^7.0.1
@@ -957,7 +957,7 @@ importers:
         specifier: ^3.4.17
         version: 3.4.17
       dotenv:
-        specifier: ^16.4.5
+        specifier: ^16.4.1
         version: 16.4.5
       drizzle-orm:
         specifier: ^0.45.4
@@ -966,7 +966,7 @@ importers:
         specifier: 9.3.1
         version: 9.3.1
       hono:
-        specifier: ^4.13.16
+        specifier: ^4.13.8
         version: 4.13.16
       html-entities:
         specifier: ^2.6.0
@@ -981,7 +981,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       jsdom:
-        specifier: ^24.1.3
+        specifier: ^24.0.0
         version: 24.1.3(supports-color@8.1.1)
       liteque:
         specifier: ^0.10.0
@@ -1053,17 +1053,17 @@ importers:
         specifier: ^7.0.0
         version: 7.0.0
       winston:
-        specifier: ^3.17.0
+        specifier: ^3.11.0
         version: 3.17.0
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@types/archiver':
         specifier: ^7.0.0
         version: 7.0.0
       '@types/jsdom':
-        specifier: ^21.1.7
+        specifier: ^21.1.6
         version: 21.1.7
       '@types/node-cron':
         specifier: ^3.0.11
@@ -1093,7 +1093,7 @@ importers:
         specifier: 3.10.2
         version: 3.10.2(@algolia/client-search@5.56.0)(@mdx-js/react@3.1.0(@types/react@19.3.0)(react@19.3.0))(@swc/core@1.16.2(@swc/helpers@0.5.23))(@types/react@19.3.0)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(debug@4.4.3(supports-color@8.1.1))(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(search-insights@2.17.3)(supports-color@8.1.1)(typescript@7.0.2)
       '@mdx-js/react':
-        specifier: ^3.1.0
+        specifier: ^3.0.0
         version: 3.1.0(@types/react@19.3.0)(react@19.3.0)
       clsx:
         specifier: ^2.1.0
@@ -1102,7 +1102,7 @@ importers:
         specifier: ^5.1.3
         version: 5.1.3(@docusaurus/plugin-content-docs@3.10.2(@mdx-js/react@3.1.0(@types/react@19.3.0)(react@19.3.0))(@swc/core@1.16.2(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(debug@4.4.3(supports-color@8.1.1))(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@8.1.1)(typescript@7.0.2))(@docusaurus/utils-validation@3.10.2(@swc/core@1.16.2(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@8.1.1))(@docusaurus/utils@3.10.2(@swc/core@1.16.2(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.28))(csso@5.0.5)(esbuild@0.28.2)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@8.1.1))(@types/json-schema@7.0.15)(react@19.3.0)
       docusaurus-theme-openapi-docs:
-        specifier: ^5.1.3
+        specifier: ^5.0.0
         version: 5.1.3(92986c2ba341389fb9c8fcc4b1129791)
       lucide-react:
         specifier: ^0.501.0
@@ -1166,7 +1166,7 @@ importers:
         specifier: ^21.3.4
         version: 21.3.4(supports-color@8.1.1)
       hono:
-        specifier: ^4.13.16
+        specifier: ^4.13.8
         version: 4.13.16
       prom-client:
         specifier: ^15.1.3
@@ -1175,11 +1175,11 @@ importers:
         specifier: ^1.2.2
         version: 1.2.2
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@types/bcryptjs':
         specifier: ^2.4.6
@@ -1197,10 +1197,10 @@ importers:
   packages/benchmarks:
     dependencies:
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../shared
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../trpc
       '@trpc/client':
         specifier: ^11.9.0
@@ -1215,11 +1215,11 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       oxlint:
         specifier: ^1.87.0
@@ -1243,7 +1243,7 @@ importers:
         specifier: ^13.0.3
         version: 13.0.3
       dotenv:
-        specifier: ^16.4.5
+        specifier: ^16.4.1
         version: 16.4.5
       drizzle-kit:
         specifier: ^0.31.10
@@ -1256,10 +1256,10 @@ importers:
         version: 4.23.13
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@types/better-sqlite3':
-        specifier: ^7.6.13
+        specifier: ^7.6.11
         version: 7.6.13
       rolldown:
         specifier: ^1.2.16
@@ -1271,16 +1271,16 @@ importers:
         specifier: ^3.1135.0
         version: 3.1135.0
       '@karakeep/plugins':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../plugins
       '@karakeep/sdk':
         specifier: workspace:*
         version: link:../sdk
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../shared
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../trpc
       '@trpc/client':
         specifier: ^11.9.0
@@ -1289,11 +1289,11 @@ importers:
         specifier: ^2.2.1
         version: 2.2.1
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@types/adm-zip':
         specifier: ^0.5.7
@@ -1317,14 +1317,14 @@ importers:
         specifier: ^8.5.0
         version: 8.5.0(zod@4.6.7)
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../shared
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       tsx:
         specifier: ^4.23.13
@@ -1357,11 +1357,11 @@ importers:
         specifier: ^5.11.0
         version: 5.11.0
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       vite-tsconfig-paths:
         specifier: ^6.1.1
@@ -1373,20 +1373,20 @@ importers:
   packages/sdk:
     dependencies:
       openapi-fetch:
-        specifier: ^0.13.8
+        specifier: ^0.13.3
         version: 0.13.8
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@tsconfig/node22':
-        specifier: ^22.0.2
+        specifier: ^22.0.0
         version: 22.0.2
       tsx:
         specifier: ^4.23.13
         version: 4.23.13
       vite:
-        specifier: ^8.3.8
+        specifier: ^8.3.0
         version: 8.3.8(@types/node@24.10.3)(esbuild@0.28.2)(jiti@2.4.2)(sass@1.102.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.8.3)
       vite-tsconfig-paths:
         specifier: ^6.1.1
@@ -1410,7 +1410,7 @@ importers:
         specifier: ^1.0.20
         version: 1.0.20
       ollama:
-        specifier: ^0.5.17
+        specifier: ^0.5.14
         version: 0.5.17
       openai:
         specifier: ^6.34.0
@@ -1419,17 +1419,17 @@ importers:
         specifier: ^0.3.4
         version: 0.3.4
       undici:
-        specifier: ^6.29.1
+        specifier: ^6.28.1
         version: 6.29.1
       winston:
-        specifier: ^3.17.0
+        specifier: ^3.11.0
         version: 3.17.0
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@types/html-to-text':
         specifier: ^9.0.4
@@ -1444,10 +1444,10 @@ importers:
   packages/shared-react:
     dependencies:
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../shared
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../trpc
       '@radix-ui/react-popover':
         specifier: ^1.1.14
@@ -1468,7 +1468,7 @@ importers:
         specifier: ^0.7.0
         version: 0.7.0
       clsx:
-        specifier: ^2.1.1
+        specifier: ^2.1.0
         version: 2.1.1
       lucide-react:
         specifier: ^0.501.0
@@ -1489,23 +1489,23 @@ importers:
         specifier: ^2.2.1
         version: 2.2.1
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
 
   packages/shared-server:
     dependencies:
       '@karakeep/db':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../db
       '@karakeep/plugins':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../plugins
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../shared
       '@opentelemetry/api':
         specifier: ^1.9.0
@@ -1547,14 +1547,14 @@ importers:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@24.10.3)
       winston:
-        specifier: ^3.17.0
+        specifier: ^3.11.0
         version: 3.17.0
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       vite-tsconfig-paths:
         specifier: ^6.1.1
@@ -1587,7 +1587,7 @@ importers:
         specifier: ^0.45.4
         version: 0.45.4(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3)(kysely@0.29.6)
       nodemailer:
-        specifier: ^10.3.1
+        specifier: ^10.0.9
         version: 10.3.1
       prom-client:
         specifier: ^15.1.3
@@ -1605,11 +1605,11 @@ importers:
         specifier: ^7.2.0
         version: 7.2.0
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       '@types/bcryptjs':
         specifier: ^2.4.6
@@ -1634,7 +1634,7 @@ importers:
   tooling/tailwind:
     dependencies:
       '@tailwindcss/typography':
-        specifier: ^0.5.16
+        specifier: ^0.5.10
         version: 0.5.16(tailwindcss@3.4.1)
       nativewind:
         specifier: ^4.2.6
@@ -1650,7 +1650,7 @@ importers:
         version: 1.0.7(tailwindcss@3.4.1)
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../typescript
       typescript:
         specifier: ^7.0.2
@@ -1659,7 +1659,7 @@ importers:
   tooling/typescript:
     devDependencies:
       '@tsconfig/node22':
-        specifier: ^22.0.2
+        specifier: ^22.0.0
         version: 22.0.2
 
   tools/compare-models:
@@ -1671,14 +1671,14 @@ importers:
         specifier: workspace:^
         version: link:../../packages/shared
       chalk:
-        specifier: ^5.6.2
+        specifier: ^5.3.0
         version: 5.6.2
       zod:
-        specifier: ^4.6.7
+        specifier: ^4.2.0
         version: 4.6.7
     devDependencies:
       '@types/node':
-        specifier: ^24.10.3
+        specifier: ^24
         version: 24.10.3
       tsx:
         specifier: ^4.23.13
@@ -1690,10 +1690,10 @@ importers:
   tools/seed-snapshot:
     dependencies:
       '@karakeep/shared':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/shared
       '@karakeep/trpc':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../packages/trpc
       '@trpc/client':
         specifier: ^11.9.0
@@ -1703,7 +1703,7 @@ importers:
         version: 2.2.1
     devDependencies:
       '@karakeep/tsconfig':
-        specifier: workspace:^
+        specifier: workspace:^0.1.0
         version: link:../../tooling/typescript
       oxlint:
         specifier: ^1.87.0
@@ -11403,8 +11403,8 @@ packages:
     resolution: {integrity: sha512-o5vL7aDWatOTX8LzaS1WMoaoxIiLRQJuIKKe2wAw6IeULDHaqbiqiggmx+pKvZDb1Sj+pE46Sn1T7lCqfFtg1Q==}
     engines: {node: '>=16'}
 
-  markdown-it@14.3.2:
-    resolution: {integrity: sha512-sHHjZ5fJKlgrG4qns2YwVcdNep35h5fERrfkD2YNsb9UFk0UIHarbiTaHKVMlPuWAoiilyK8Fv/jAm11slsY7Q==}
+  markdown-it@14.3.3:
+    resolution: {integrity: sha512-L//tDAkjTjJCU6pBUSBTgs3Kg4InVaZuUZog/b6V12UKhcDQ7S78877ibbCanRExwPuYP1CZD7Gd2dxSy1GXRg==}
     hasBin: true
 
   markdown-table@3.0.4:
@@ -26875,7 +26875,7 @@ snapshots:
 
   markdown-extensions@2.0.0: {}
 
-  markdown-it@14.3.2:
+  markdown-it@14.3.3:
     dependencies:
       argparse: 2.0.1
       entities: 4.5.0
@@ -29617,7 +29617,7 @@ snapshots:
   react-native-markdown-display@7.0.2(react-native@0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0):
     dependencies:
       css-to-react-native: 3.2.0
-      markdown-it: 14.3.2
+      markdown-it: 14.3.3
       prop-types: 15.8.1
       react: 19.3.0
       react-native: 0.88.1(patch_hash=491ba7dc2b54e34aae156987bef5916ac91c2440b53b0659f7504aea21f9f361)(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
