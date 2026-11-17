@@ -342,6 +342,10 @@ export async function downloadInstagramMediaBatch(
   try {
     for (const [index, item] of post.media.entries()) {
       signal.throwIfAborted();
+      // Defense in depth: validate again at the network request boundary.
+      if (!isInstagramCdnUrl(item.url)) {
+        throw new Error("Invalid Instagram CDN URL");
+      }
       const ext = item.type === "video" ? ".mp4" : ".jpg";
       const filename = path.join(
         folder,
