@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           gh extension install github/gh-actions-lock --pin v0.4.0
-          gh actions-lock
+          gh actions-lock --migrate-local-actions
           gh actions-lock --verify
           git diff --stat
           git diff > "$RUNNER_TEMP/actions-lock.patch"
