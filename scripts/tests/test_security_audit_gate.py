@@ -68,6 +68,16 @@ class SecurityAuditGateTests(unittest.TestCase):
         )}})
         self.assertEqual(errors, [])
 
+    def test_expo_metro_config_and_redocly_docs_paths(self):
+        _, errors = gate.review({"advisories": {"1": advisory(
+            "picomatch", "GHSA-fc5q-39xc-vjpf", "high",
+            [
+                "apps__mobile>@expo/dom-webview>expo>@expo/cli>@expo/metro-config>picomatch",
+                "docs>docusaurus-plugin-openapi-docs>@redocly/openapi-core>picomatch",
+            ],
+        )}})
+        self.assertEqual(errors, [])
+
     def test_picomatch_runtime_exposure_blocks(self):
         _, errors = gate.review({"advisories": {"1": advisory(
             "picomatch", "GHSA-fc5q-39xc-vjpf", "high",
