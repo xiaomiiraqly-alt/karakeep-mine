@@ -19,6 +19,10 @@ jobs:
           set -Eeuo pipefail
           pnpm audit --fix=update --audit-level high || echo "Some unpatchable advisories remain"
           pnpm install --lockfile-only --no-frozen-lockfile
+          pnpm install --frozen-lockfile
+          pnpm --filter @karakeep/docs typecheck
+          pnpm --filter @karakeep/docs build
+          pnpm --filter @karakeep/mobile test
           git diff --stat -- pnpm-lock.yaml pnpm-workspace.yaml
           echo "=== POST-FIX PRODUCTION DEPENDENCY AUDIT ==="
           pnpm audit --prod --audit-level high || echo "Production dependencies still require remediation"
