@@ -49,6 +49,13 @@ class SecurityAuditGateTests(unittest.TestCase):
         )}})
         self.assertEqual(errors, [])
 
+    def test_expo_metro_jest_util_path_is_build_tool(self):
+        _, errors = gate.review({"advisories": {"1": advisory(
+            "picomatch", "GHSA-fc5q-39xc-vjpf", "high",
+            ["apps__mobile>@expo/metro>metro>jest-worker>jest-util>picomatch"],
+        )}})
+        self.assertEqual(errors, [])
+
     def test_picomatch_runtime_exposure_blocks(self):
         _, errors = gate.review({"advisories": {"1": advisory(
             "picomatch", "GHSA-fc5q-39xc-vjpf", "high",
