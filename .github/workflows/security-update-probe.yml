@@ -12,7 +12,15 @@ jobs:
       - uses: actions/checkout@v4.3.1
         with:
           persist-credentials: true
-      - uses: $/tooling/github/setup
+      - uses: pnpm/action-setup@v6.0.8
+        with:
+          version: 11.28.9
+          run_install: false
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "24"
+      - name: Reconcile security overrides before frozen installs
+        run: pnpm install --no-frozen-lockfile
       - name: Update dependency lockfile to patched advisory versions
         shell: bash
         run: |
