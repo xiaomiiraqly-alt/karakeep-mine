@@ -145,4 +145,44 @@ describe("upstream summarization outcomes", () => {
     expect(mocks.set).toHaveBeenLastCalledWith({ summarizationStatus: null });
     expect(mocks.summarize).not.toHaveBeenCalled();
   });
+  it("does not claim successful tagging when no model is configured", async () => {
+    mocks.buildClient.mockReturnValue(null);
+    await OpenAiWorker.build();
+    const callbacks = mocks.runner.mock.calls[0][1] as RunnerFuncs<
+      ZOpenAIRequest,
+      InferenceOutcome
+    >;
+    const job: DequeuedJob<ZOpenAIRequest> = {
+      id: "no-model-tag",
+      data: { type: "tag", bookmarkId: "b" },
+      priority: 0,
+      runNumber: 0,
+      abortSignal: new AbortController().signal,
+    };
+    const result = await callbacks.run(job);
+    expect(result).toBe("skipped");
+    await callbacks.onComplete!(job, result);
+    expect(mocks.set).toHaveBeenLastCalledWith({ taggingStatus: null });
+    expect(mocks.tag).not.toHaveBeenCalled();
+    expect(mocks.labels).not.toHaveBeenCalledWith("inference", "completed");
+  });
+
+  it("clears pending status for user-disabled tagging", async () => {
+    mocks.tag.mockResolvedValue("skipped");
+    await OpenAiWorker.build();
+    const callbacks = mocks.runner.mock.calls[0][1] as RunnerFuncs<
+      ZOpenAIRequest,
+      InferenceOutcome
+    >;
+    const job: DequeuedJob<ZOpenAIRequest> = {
+      id: "disabled-tag",
+      data: { type: "tag", bookmarkId: "b" },
+      priority: 0,
+      runNumber: 0,
+      abortSignal: new AbortController().signal,
+    };
+    expect(await callbacks.run(job)).toBe("skipped");
+    await callbacks.onComplete!(job, "skipped");
+    expect(mocks.set).toHaveBeenLastCalledWith({ taggingStatus: null });
+  });
 });
