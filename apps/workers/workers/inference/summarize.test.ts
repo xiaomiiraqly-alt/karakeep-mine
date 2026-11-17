@@ -191,10 +191,10 @@ describe("upstream summary formats with custom Instagram processing", () => {
   });
 });
 
-
 describe("Instagram title concurrency", () => {
   it("guards the cached Reader HTML against an intervening recrawl", async () => {
-    const oldHtml = "<article><h1>Instagram — @test</h1><p>Old gallery</p></article>";
+    const oldHtml =
+      "<article><h1>Instagram — @test</h1><p>Old gallery</p></article>";
     mocks.bookmark.mockResolvedValue({
       id: "b",
       userId: "u",
