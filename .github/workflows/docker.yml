@@ -61,6 +61,8 @@ jobs:
           file: ./docker/Dockerfile
           target: aio
           platforms: linux/amd64
+          build-args: |
+            SERVER_VERSION=0.35.0-fork
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:instagram
@@ -68,6 +70,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ env.VERIFIED_SHA }}
+            org.opencontainers.image.version=0.35.0-fork
           cache-from: type=gha,scope=upstream-v035
           cache-to: type=gha,mode=max,scope=upstream-v035
       - name: Record deployable immutable digest
