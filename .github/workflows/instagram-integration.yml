@@ -16,6 +16,8 @@ on:
       - "docker/Dockerfile"
       - ".github/workflows/instagram-integration.yml"
       - "scripts/production-preflight.sh"
+      - "scripts/security-audit-gate.py"
+      - "scripts/tests/test_security_audit_gate.py"
       - "docs/production-deployment.md"
       - "packages/trpc/lib/instagramReaderAssets.ts"
   workflow_dispatch:
@@ -76,5 +78,7 @@ jobs:
       - uses: $/tooling/github/setup
       - name: Check read-only production preflight syntax
         run: bash -n scripts/production-preflight.sh
-      - name: Audit dependencies for high and critical vulnerabilities
-        run: pnpm audit --audit-level high
+      - name: Test security audit gate
+        run: python3 -m unittest discover -s scripts/tests -p 'test_security_audit_gate.py' -v
+      - name: Audit full workspace; fail on unexpected HIGH/CRITICAL advisories
+        run: python3 scripts/security-audit-gate.py
