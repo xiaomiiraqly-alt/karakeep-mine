@@ -56,6 +56,18 @@ class SecurityAuditGateTests(unittest.TestCase):
         )}})
         self.assertEqual(errors, [])
 
+    def test_astro_and_vite_build_only_paths(self):
+        _, errors = gate.review({"advisories": {"1": advisory(
+            "picomatch", "GHSA-fc5q-39xc-vjpf", "high",
+            [
+                "apps__landing>astro>@astrojs/internal-helpers>picomatch",
+                "apps__browser-extension>@crxjs/vite-plugin>tinyglobby>picomatch",
+                "apps__mcp>vitest>picomatch",
+                "apps__landing>vite-plugin-svgr>@rollup/pluginutils>picomatch",
+            ],
+        )}})
+        self.assertEqual(errors, [])
+
     def test_picomatch_runtime_exposure_blocks(self):
         _, errors = gate.review({"advisories": {"1": advisory(
             "picomatch", "GHSA-fc5q-39xc-vjpf", "high",
