@@ -1,7 +1,7 @@
 import { tagConceptKey } from "@karakeep/shared/utils/tagConcepts";
 
 export const MIN_TOPICAL_TAGS = 5;
-export type TaggingOutcome = "incomplete" | void;
+export type TaggingOutcome = "incomplete" | "skipped" | void;
 
 export function distinctTagCount(tags: readonly string[]): number {
   return new Set(tags.map(tagConceptKey)).size;
