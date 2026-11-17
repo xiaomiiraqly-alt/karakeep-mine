@@ -679,6 +679,9 @@ describe("rate limiting", () => {
     expect((await attempt(10)).status).toBe(429);
   });
 
+  // Fifty-one sequential auth requests can exceed Vitest's 5-second default
+  // when the CI runner concurrently builds the Playwright Docker images.
+  // Keep every request and assertion; only extend this particular test's deadline.
   test("limits login attempts per email across client IPs", async () => {
     const { call } = await setupWithRateLimits();
     const attempt = (i: number) =>
@@ -694,7 +697,7 @@ describe("rate limiting", () => {
       expect((await attempt(i)).status).toBe(401);
     }
     expect((await attempt(50)).status).toBe(429);
-  });
+  }, 30000);
 
   test("limits password reset requests per email, even without an IP", async () => {
     const { call } = await setupWithRateLimits();
