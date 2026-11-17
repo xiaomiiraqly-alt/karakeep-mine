@@ -87,6 +87,7 @@ beforeEach(() => {
     set: () => ({ where: () => ({ returning: async () => [{ id: "b" }] }) }),
   });
   serverConfig.embedding.enableAutoIndexing = true;
+  serverConfig.inference.enableAutoTagging = true;
   mocks.findBookmark.mockResolvedValue({
     id: "b",
     userId: "u",
@@ -330,5 +331,32 @@ describe("tagging failure safety", () => {
     });
     await runTagging("b", job(), client(infer));
     expect(infer).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("skipped tagging does not fabricate an AI result", () => {
+  it("skips when automatic tagging is disabled globally", async () => {
+    serverConfig.inference.enableAutoTagging = false;
+    const inference = vi.fn();
+    expect(await runTagging("b", job(), client(inference))).toBe("skipped");
+    expect(inference).not.toHaveBeenCalled();
+  });
+
+  it("skips when user disabled automatic tagging", async () => {
+    mocks.findUser.mockResolvedValue({ autoTaggingEnabled: false });
+    const inference = vi.fn();
+    expect(await runTagging("b", job(), client(inference))).toBe("skipped");
+    expect(inference).not.toHaveBeenCalled();
+  });
+
+  it("skips when selected curated tags were all removed", async () => {
+    mocks.findUser.mockResolvedValue({
+      autoTaggingEnabled: true,
+      curatedTagIds: ["removed-id"],
+    });
+    mocks.findTags.mockResolvedValue([]);
+    const inference = vi.fn();
+    expect(await runTagging("b", job(), client(inference))).toBe("skipped");
+    expect(inference).not.toHaveBeenCalled();
   });
 });
