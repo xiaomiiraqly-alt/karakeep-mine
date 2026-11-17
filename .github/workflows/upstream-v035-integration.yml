@@ -1,0 +1,45 @@
+name: Integrate upstream v0.35.0 (isolated)
+on:
+  push:
+    branches: [integrate-upstream-v0.35.0]
+    paths:
+      - .github/workflows/upstream-v035-integration.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Attempt upstream merge (no automatic conflict resolution)
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/karakeep-app/karakeep.git
+          git fetch --no-tags upstream refs/tags/v0.35.0:refs/tags/upstream-v0.35.0
+          if git merge --no-edit --no-ff upstream-v0.35.0; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+            git push origin HEAD:integrate-upstream-v0.35.0
+          else
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+            git diff --name-only --diff-filter=U | tee merge-conflicts.txt
+            git merge --abort || true
+          fi
+      - name: Upload conflict report
+        if: steps.merge.outputs.merged == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-v035-conflicts
+          path: merge-conflicts.txt
+      - name: Fail if manual resolution needed
+        if: steps.merge.outputs.merged == 'false'
+        run: |
+          echo "Upstream merge has conflicts. Main is unchanged; manual integration is required."
+          exit 1
