@@ -29,7 +29,7 @@ EXCEPTIONS = {
 BUILD_TOOLS = (
     ">tailwindcss>", ">chokidar>", ">fast-glob>", ">micromatch>",
     ">anymatch>", ">vite>", ">webpack>", ">eslint>",
-    ">globby>", ">postcss>", ">turbo>",
+    ">globby>", ">postcss>", ">turbo>", ">jest-util>",
 )
 
 
