@@ -29,6 +29,7 @@ jobs:
           pnpm install --lockfile-only --no-frozen-lockfile
           pnpm install --frozen-lockfile
           pnpm --filter @karakeep/docs typecheck
+          # Validate docs plugin compatibility after removing the incompatible faker override.
           pnpm --filter @karakeep/docs build
           pnpm --filter @karakeep/mobile test
           git diff --stat -- pnpm-lock.yaml pnpm-workspace.yaml
