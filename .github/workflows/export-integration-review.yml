@@ -1,0 +1,33 @@
+name: Export integration review sources
+on:
+  push:
+    branches: [integrate-upstream-v0.35.0]
+    paths: [.github/workflows/export-integration-review.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export source trees without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/karakeep-app/karakeep.git
+          git fetch --no-tags upstream refs/tags/v0.35.0:refs/tags/upstream-v0.35.0
+          paths=(apps/workers packages/shared packages/shared-server packages/trpc packages/db docker .github tooling package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json)
+          mkdir review
+          git rev-parse origin/upstream-v035-provisional > review/candidate-sha.txt
+          git archive origin/upstream-v035-provisional -- "${paths[@]}" | gzip > review/candidate.tar.gz
+          git archive upstream-v0.35.0 -- "${paths[@]}" | gzip > review/upstream.tar.gz
+          git archive origin/main -- "${paths[@]}" | gzip > review/fork-main.tar.gz
+          git diff upstream-v0.35.0 origin/upstream-v035-provisional > review/candidate-vs-upstream.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: integration-source-review
+          path: review/
+          retention-days: 7
