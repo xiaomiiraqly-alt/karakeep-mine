@@ -1,0 +1,122 @@
+name: Apply reviewed v0.35 repairs and validate
+on:
+  push:
+    branches: [integrate-upstream-v0.35.0]
+    paths: [.github/workflows/apply-reviewed-v035-repair.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    outputs:
+      candidate: ${{ steps.save.outputs.candidate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply reviewed source patch to isolated candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp scripts/integration/upstream-v035-repair.patch "$RUNNER_TEMP/reviewed.patch"
+          git fetch origin upstream-v035-provisional
+          git checkout -B upstream-v035-provisional origin/upstream-v035-provisional
+          test "$(git rev-parse HEAD)" = dfd84e10327050804d4cba5db6db68a1cda09287
+          git apply --check "$RUNNER_TEMP/reviewed.patch"
+          git apply "$RUNNER_TEMP/reviewed.patch"
+          git diff --check
+      - name: Install pinned workspace tools
+        uses: ./tooling/github/setup
+      - name: Apply canonical formatting
+        run: pnpm format:fix
+      - name: Save reviewed candidate (never main)
+        id: save
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- .github/workflows package.json pnpm-lock.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps packages tooling
+          git commit -m "fix: reconcile upstream summaries, OCR, crawler routing and custom Instagram inference"
+          git push origin HEAD:upstream-v035-provisional
+          echo "candidate=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git archive HEAD | gzip > "$RUNNER_TEMP/repaired-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repaired-source
+          path: ${{ runner.temp }}/repaired-source.tar.gz
+          retention-days: 7
+  validation:
+    needs: repair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [types, lint, format, unit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.repair.outputs.candidate }}
+          persist-credentials: false
+      - uses: ./tooling/github/setup
+      - name: Run checks and retain logs
+        shell: bash
+        env:
+          TASK: ${{ matrix.task }}
+        run: |
+          set -uo pipefail
+          run_checks() {
+            case "$TASK" in
+              types) pnpm typecheck ;;
+              lint) pnpm lint && pnpm exec sherif ;;
+              format) pnpm format ;;
+              unit)
+                result=0
+                for package in shared trpc workers web api shared-server mcp mobile; do
+                  pnpm --filter "@karakeep/$package" test || result=1
+                done
+                return "$result"
+                ;;
+            esac
+          }
+          run_checks 2>&1 | tee "$RUNNER_TEMP/validation-$TASK.log"
+          result=${PIPESTATUS[0]}
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-${{ matrix.task }}
+          path: ${{ runner.temp }}/validation-*.log
+          retention-days: 7
+  docker:
+    needs: repair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.repair.outputs.candidate }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build custom all-in-one image without registry publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          target: aio
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: karakeep-integration:test
+          cache-from: type=gha,scope=upstream-v035
+          cache-to: type=gha,mode=max,scope=upstream-v035
+      - name: Verify Node runtime and Instagram downloader
+        run: |
+          docker run --rm --entrypoint node karakeep-integration:test --version
+          docker run --rm --entrypoint gallery-dl karakeep-integration:test --version
