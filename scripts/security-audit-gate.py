@@ -30,6 +30,8 @@ BUILD_TOOLS = (
     ">tailwindcss>", ">chokidar>", ">fast-glob>", ">micromatch>",
     ">anymatch>", ">vite>", ">webpack>", ">eslint>",
     ">globby>", ">postcss>", ">turbo>", ">jest-util>",
+    ">tinyglobby>", ">vitest>", ">astro>", ">@astrojs/",
+    ">vite-plugin-svgr>", ">@rollup/pluginutils>",
 )
 
 
