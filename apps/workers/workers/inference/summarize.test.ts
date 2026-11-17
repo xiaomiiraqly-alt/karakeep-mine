@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
+import type { SQL } from "drizzle-orm";
 import type { InferenceClient } from "@karakeep/shared/inference";
 import type { DequeuedJob } from "@karakeep/shared/queueing";
 import type { ZOpenAIRequest } from "@karakeep/shared-server";
@@ -186,5 +188,46 @@ describe("upstream summary formats with custom Instagram processing", () => {
       expect.stringContaining("A red bicycle"),
       expect.any(Object),
     );
+  });
+});
+
+
+describe("Instagram title concurrency", () => {
+  it("guards the cached Reader HTML against an intervening recrawl", async () => {
+    const oldHtml = "<article><h1>Instagram — @test</h1><p>Old gallery</p></article>";
+    mocks.bookmark.mockResolvedValue({
+      id: "b",
+      userId: "u",
+      type: "link",
+      title: null,
+      link: {
+        title: "Instagram — @test",
+        url: "https://www.instagram.com/p/abc/",
+        description: "A mountain bicycle",
+        htmlContent: oldHtml,
+      },
+    });
+    const filters: SQL[] = [];
+    mocks.update.mockReturnValue({
+      set: () => ({
+        where: (filter: SQL) => {
+          filters.push(filter);
+          return { returning: async () => [] };
+        },
+      }),
+    });
+    const infer = vi
+      .fn()
+      .mockResolvedValueOnce({ response: "A mountain bicycle in the forest" })
+      .mockResolvedValueOnce({
+        response: "Горный велосипед в осеннем лесу",
+      });
+    await expect(
+      runSummarization("b", request(), client(infer)),
+    ).resolves.toBe("summarized");
+    expect(filters).toHaveLength(2);
+    const titleGuard = new SQLiteSyncDialect().sqlToQuery(filters[1]);
+    expect(titleGuard.sql).toContain("htmlContent");
+    expect(titleGuard.params).toContain(oldHtml);
   });
 });
