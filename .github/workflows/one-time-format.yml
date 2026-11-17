@@ -17,14 +17,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pnpm exec oxfmt --write \
-            apps/workers/workers/inference/summarize.test.ts \
-            apps/workers/workers/utils/instagramPublic.test.ts \
-            apps/workers/workers/utils/instagramUrls.ts
-          pnpm exec oxfmt --check \
-            apps/workers/workers/inference/summarize.test.ts \
-            apps/workers/workers/utils/instagramPublic.test.ts \
-            apps/workers/workers/utils/instagramUrls.ts
+          cd apps/workers
+          pnpm exec oxfmt --ignore-path=../../.gitignore \
+            workers/inference/summarize.test.ts \
+            workers/utils/instagramPublic.test.ts \
+            workers/utils/instagramUrls.ts
+          pnpm exec oxfmt --ignore-path=../../.gitignore --check \
+            workers/inference/summarize.test.ts \
+            workers/utils/instagramPublic.test.ts \
+            workers/utils/instagramUrls.ts
+          cd ../..
       - name: Commit canonical formatting without modifying other files
         shell: bash
         run: |
@@ -36,7 +38,7 @@ jobs:
             apps/workers/workers/utils/instagramPublic.test.ts \
             apps/workers/workers/utils/instagramUrls.ts
           if ! git diff --cached --quiet; then
-            git commit -m "style: apply canonical oxfmt formatting to audit regressions"
+            HUSKY=0 git commit -m "style: apply package-local oxfmt formatting to audit regressions"
             git push origin HEAD:upstream-v035-provisional
           else
             echo "Files already canonically formatted."
