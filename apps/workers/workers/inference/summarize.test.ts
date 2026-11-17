@@ -222,9 +222,9 @@ describe("Instagram title concurrency", () => {
       .mockResolvedValueOnce({
         response: "Горный велосипед в осеннем лесу",
       });
-    await expect(
-      runSummarization("b", request(), client(infer)),
-    ).resolves.toBe("summarized");
+    await expect(runSummarization("b", request(), client(infer))).resolves.toBe(
+      "summarized",
+    );
     expect(filters).toHaveLength(2);
     const titleGuard = new SQLiteSyncDialect().sqlToQuery(filters[1]);
     expect(titleGuard.sql).toContain("htmlContent");
