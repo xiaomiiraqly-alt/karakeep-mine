@@ -98,10 +98,8 @@ import {
   isLikelyChallengePage,
   resolveMetadata,
 } from "./utils/metadataResolver";
-import { runParseSubprocess } from "./utils/parseSubprocess";
 import { importInstagramPost } from "./instagram";
 import { instagramCanonicalUrl } from "./utils/instagramUrls";
-import { installRedirectGuard } from "./utils/redirectGuard";
 
 const crawler: Crawler = serverConfig.sandbox.url
   ? remoteCrawler
@@ -328,6 +326,19 @@ async function runCrawler(
 
   log.info(`Will crawl "${truncateUrl(url)}" for link with id "${bookmarkId}"`);
   await checkDomainRateLimit(ctx);
+
+  // Offline-copy jobs must not re-import media or enqueue inference jobs.
+  if (offlineCopiesOnly) {
+    await storeOfflineCopies(ctx, {
+      archiveFullPage,
+      storePdf,
+      precrawledArchiveAssetId,
+      oldPdfAssetId,
+      oldFullPageArchiveAssetId,
+      numRetriesLeft,
+    });
+    return { status: "completed" };
+  }
 
   // Instagram login/interstitial pages are not the requested post content.
   // Never pass a failed media extraction to the ordinary HTML crawler: doing

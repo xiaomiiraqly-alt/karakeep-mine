@@ -4,8 +4,6 @@ import { z } from "zod";
 import { OllamaInferenceClient, OpenAIInferenceClient } from "./inference";
 import type { OpenAIInferenceConfig } from "./inference";
 
-let completionChoices: { message: { content: string | null } }[] = [];
-
 const capturedBodies: Record<string, unknown>[] = [];
 const defaultResponse = {
   choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
@@ -21,10 +19,7 @@ vi.mock("openai", () => {
         completions: {
           create: vi.fn(async (body: Record<string, unknown>) => {
             capturedBodies.push(body);
-            return {
-              choices: completionChoices,
-              usage: { total_tokens: 1 },
-            };
+            return nextResponse;
           }),
         },
       },
@@ -69,7 +64,7 @@ function makeConfig(
 describe("OpenAIInferenceClient response_format", () => {
   beforeEach(() => {
     capturedBodies.length = 0;
-    completionChoices = [{ message: { content: "{}" } }];
+    nextResponse = defaultResponse;
   });
 
   it("omits response_format for schema-less text inference in json mode", async () => {
@@ -112,25 +107,6 @@ describe("OpenAIInferenceClient response_format", () => {
       json_schema: { name: "schema" },
     });
   });
-  it.each([
-    { choices: [] },
-    { choices: [{ message: { content: null } }] },
-    { choices: [{ message: { content: "  " } }] },
-  ])(
-    "rejects empty completions with an actionable error: %j",
-    async ({ choices }) => {
-      completionChoices = choices;
-      const client = new OpenAIInferenceClient(makeConfig("json"));
-      await expect(
-        client.inferFromText("infer tags", { schema: tagSchema }),
-      ).rejects.toThrow("Got no message content from OpenAI");
-      await expect(
-        client.inferFromImage("infer tags", "image/jpeg", "base64", {
-          schema: tagSchema,
-        }),
-      ).rejects.toThrow("Got no message content from OpenAI");
-    },
-  );
 });
 
 function completionWith(
@@ -178,6 +154,46 @@ describe("OpenAIInferenceClient response handling", () => {
     await expect(
       client.inferFromText("summarize", { schema: null }),
     ).rejects.toThrow(/no message content/);
+  });
+
+  it.each([null, "", "   "])(
+    "rejects missing or blank text content: %s",
+    async (content) => {
+      nextResponse = completionWith({ content }, "stop");
+      const client = new OpenAIInferenceClient(makeConfig("plain"));
+      await expect(
+        client.inferFromText("summarize", { schema: null }),
+      ).rejects.toThrow(/no message content/);
+    },
+  );
+
+  it.each([null, "", "   "])(
+    "rejects blank structured image output: %s",
+    async (content) => {
+      nextResponse = completionWith({ content }, "stop");
+      const client = new OpenAIInferenceClient(makeConfig("json"));
+      await expect(
+        client.inferFromImage("tag", "image/png", "BASE64", {
+          schema: tagSchema,
+        }),
+      ).rejects.toThrow(/no message content/);
+    },
+  );
+
+  it("accepts whitespace-only OCR as no extracted text", async () => {
+    nextResponse = completionWith({ content: "   " }, "stop");
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+    await expect(
+      client.inferFromImage("ocr", "image/png", "BASE64", { schema: null }),
+    ).resolves.toMatchObject({ response: "" });
+  });
+
+  it("reports an absent choice instead of throwing a property-access error", async () => {
+    nextResponse = { choices: [], usage: { total_tokens: 0 } };
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+    await expect(
+      client.inferFromText("summarize", { schema: null }),
+    ).rejects.toThrow(/no choices/);
   });
 
   it("explains when the output token limit was hit", async () => {

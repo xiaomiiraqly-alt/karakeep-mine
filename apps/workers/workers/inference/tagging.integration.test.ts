@@ -26,8 +26,8 @@ vi.mock("@karakeep/db", () => ({
     },
   ),
 }));
-vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
-vi.mock("trpc", () => ({ buildImpersonatingTRPCClient: vi.fn() }));
+vi.mock("../../network", () => ({ getBookmarkDomain: vi.fn() }));
+vi.mock("../../trpc", () => ({ buildImpersonatingTRPCClient: vi.fn() }));
 vi.mock("@karakeep/shared/config", () => ({
   default: {
     embedding: { enableAutoIndexing: false },

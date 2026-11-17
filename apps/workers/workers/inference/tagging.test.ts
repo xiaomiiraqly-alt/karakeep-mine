@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
   prompts: vi.fn(),
   tagsApi: vi.fn(),
 }));
-vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
-vi.mock("trpc", () => ({
+vi.mock("../../network", () => ({ getBookmarkDomain: vi.fn() }));
+vi.mock("../../trpc", () => ({
   buildImpersonatingTRPCClient: async () => ({ tags: { list: mocks.tagsApi } }),
 }));
 vi.mock("@karakeep/db", () => ({

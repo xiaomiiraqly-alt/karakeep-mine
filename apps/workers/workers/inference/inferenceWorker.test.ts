@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ZOpenAIRequest } from "@karakeep/shared-server";
 import type { DequeuedJob, RunnerFuncs } from "@karakeep/shared/queueing";
 import type { TaggingOutcome } from "./taggingPolicy";
+import type { InferenceOutcome } from "./inferenceWorker";
 
 const mocks = vi.hoisted(() => ({
   runner: vi.fn(),
+  buildClient: vi.fn(),
   set: vi.fn(),
   tag: vi.fn<() => Promise<TaggingOutcome>>(),
   summarize: vi.fn(),
@@ -12,10 +14,10 @@ const mocks = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
 }));
-vi.mock("metrics", () => ({
+vi.mock("../../metrics", () => ({
   workerStatsCounter: { labels: mocks.labels },
 }));
-vi.mock("workerTracing", () => ({
+vi.mock("../../workerTracing", () => ({
   withWorkerTracing: (_name: string, fn: unknown) => fn,
   withWorkerEventLog: (_name: string, fn: unknown) => fn,
 }));
@@ -37,7 +39,7 @@ vi.mock("@karakeep/shared/config", () => ({
   default: { inference: { numWorkers: 1, jobTimeoutSec: 120 } },
 }));
 vi.mock("@karakeep/shared/inference", () => ({
-  InferenceClientFactory: { build: () => ({}) },
+  InferenceClientFactory: { build: mocks.buildClient },
 }));
 vi.mock("@karakeep/shared/logger", () => ({
   default: {
@@ -57,6 +59,8 @@ import { OpenAiWorker } from "./inferenceWorker";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.buildClient.mockReturnValue({});
+  mocks.summarize.mockResolvedValue("summarized");
   mocks.set.mockReturnValue({ where: async () => undefined });
   mocks.labels.mockReturnValue({ inc: vi.fn() });
   mocks.tag.mockResolvedValue(undefined);
@@ -93,4 +97,52 @@ describe("inference completion status", () => {
       }
     },
   );
+});
+
+describe("upstream summarization outcomes", () => {
+  it.each(["summarized", "skipped"] as const)(
+    "records %s without confusing tagging outcomes",
+    async (outcome) => {
+      mocks.summarize.mockResolvedValue(outcome);
+      await OpenAiWorker.build();
+      const callbacks = mocks.runner.mock.calls[0][1] as RunnerFuncs<
+        ZOpenAIRequest,
+        InferenceOutcome
+      >;
+      const job: DequeuedJob<ZOpenAIRequest> = {
+        id: "job",
+        data: { type: "summarize", bookmarkId: "b" },
+        priority: 0,
+        runNumber: 0,
+        abortSignal: new AbortController().signal,
+      };
+      const result = await callbacks.run(job);
+      expect(result).toBe(outcome);
+      await callbacks.onComplete!(job, result);
+      expect(mocks.set).toHaveBeenLastCalledWith({
+        summarizationStatus: outcome === "summarized" ? "success" : null,
+      });
+    },
+  );
+
+  it("clears pending summarization when no inference client is configured", async () => {
+    mocks.buildClient.mockReturnValue(null);
+    await OpenAiWorker.build();
+    const callbacks = mocks.runner.mock.calls[0][1] as RunnerFuncs<
+      ZOpenAIRequest,
+      InferenceOutcome
+    >;
+    const job: DequeuedJob<ZOpenAIRequest> = {
+      id: "job",
+      data: { type: "summarize", bookmarkId: "b" },
+      priority: 0,
+      runNumber: 0,
+      abortSignal: new AbortController().signal,
+    };
+    const result = await callbacks.run(job);
+    expect(result).toBe("skipped");
+    await callbacks.onComplete!(job, result);
+    expect(mocks.set).toHaveBeenLastCalledWith({ summarizationStatus: null });
+    expect(mocks.summarize).not.toHaveBeenCalled();
+  });
 });

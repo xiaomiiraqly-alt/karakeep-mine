@@ -1,8 +1,8 @@
 /** Public Instagram media fallback. No user login, cookies or credentials are stored. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { fetchWithProxy } from "network";
-import type { RunProxyConfig } from "network";
+import { fetchWithProxy } from "../../network";
+import type { RunProxyConfig } from "../../network";
 
 const DOC_ID = "27128499623469141";
 const APP_ID = "936619743392459";

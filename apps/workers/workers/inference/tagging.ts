@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
-import { getBookmarkDomain } from "network";
-import { buildImpersonatingTRPCClient } from "trpc";
+import { getBookmarkDomain } from "../../network";
+import { buildImpersonatingTRPCClient } from "../../trpc";
 import { z } from "zod";
 import { getVectorStoreClient } from "@karakeep/shared/vectorStore";
 

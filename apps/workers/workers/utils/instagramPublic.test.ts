@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("network", () => ({ fetchWithProxy: vi.fn() }));
+vi.mock("../../network", () => ({ fetchWithProxy: vi.fn() }));
 
 import {
   downloadPublicInstagramPost,

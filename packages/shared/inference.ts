@@ -285,7 +285,7 @@ function extractOpenAIMessageContent(
     throw new Error(`Got no choices in the response from OpenAI`);
   }
   const content = choice.message.content;
-  if (content) {
+  if (content?.trim()) {
     return content;
   }
   if (choice.message.refusal) {
@@ -360,10 +360,9 @@ export class OpenAIInferenceClient implements InferenceClient {
       },
     );
 
-    const response = chatCompletion.choices[0]?.message?.content;
-    if (!response?.trim()) {
-      throw new Error(`Got no message content from OpenAI`);
-    }
+    const response = extractOpenAIMessageContent(chatCompletion, {
+      allowEmpty: false,
+    });
     return { response, totalTokens: chatCompletion.usage?.total_tokens };
   }
 
@@ -411,10 +410,12 @@ export class OpenAIInferenceClient implements InferenceClient {
       },
     );
 
-    const response = chatCompletion.choices[0]?.message?.content;
-    if (!response?.trim()) {
-      throw new Error(`Got no message content from OpenAI`);
-    }
+    // Free-form image prompts (e.g. OCR) can legitimately produce an empty
+    // answer when there's nothing to extract, so don't treat that as an error.
+    // Structured requests (e.g. tagging) always expect a JSON payload.
+    const response = extractOpenAIMessageContent(chatCompletion, {
+      allowEmpty: optsWithDefaults.schema === null,
+    });
     return { response, totalTokens: chatCompletion.usage?.total_tokens };
   }
 

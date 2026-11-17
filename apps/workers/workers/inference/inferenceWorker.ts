@@ -19,6 +19,8 @@ import { runSummarization, SummarizationOutcome } from "./summarize";
 import { runTagging } from "./tagging";
 import type { TaggingOutcome } from "./taggingPolicy";
 
+export type InferenceOutcome = TaggingOutcome | SummarizationOutcome;
+
 async function attemptMarkStatus(
   jobData: object | undefined,
   status: "success" | "failure",
@@ -85,7 +87,7 @@ export class OpenAiWorker {
     logger.info("Starting inference worker ...");
     const worker = (await getQueueClient())!.createRunner<
       ZOpenAIRequest,
-      TaggingOutcome
+      InferenceOutcome
     >(
       OpenAIQueue,
       {
@@ -141,7 +143,7 @@ export class OpenAiWorker {
 
 async function runOpenAI(
   job: DequeuedJob<ZOpenAIRequest>,
-): Promise<SummarizationOutcome | undefined> {
+): Promise<InferenceOutcome> {
   const jobId = job.id;
 
   const inferenceClient = InferenceClientFactory.build();

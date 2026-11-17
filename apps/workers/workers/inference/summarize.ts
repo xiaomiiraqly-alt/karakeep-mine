@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { getBookmarkDomain } from "network";
+import { getBookmarkDomain } from "../../network";
 
 import { db } from "@karakeep/db";
 import {
@@ -137,33 +137,8 @@ export async function runSummarization(
         )) ?? "")
       : "";
 
-  const textToSummarize = buildSummarizationInput(
-    bookmarkData,
-    linkPlainTextContent,
-  );
-
-    if (!link.description && !content) {
-      // No content to infer from; skip summarization
-      logger.info(
-        `[inference] No content found for link "${bookmarkId}". Skipping summary.`,
-      );
-      return;
-    }
-
-    textToSummarize = `
-Title: ${link.title ?? ""}
-Description: ${link.description ?? ""}
-Content: ${content}
-Publisher: ${link.publisher ?? ""}
-Author: ${link.author ?? ""}
-URL: ${link.url ?? ""}
-`;
-  } else {
-    logger.warn(
-      `[inference][${jobId}] Bookmark ${bookmarkId} (type: ${bookmarkData.type}) is not a LINK or TEXT type with content, or content is missing. Skipping summary.`,
-    );
-    return;
-  }
+  let textToSummarize =
+    buildSummarizationInput(bookmarkData, linkPlainTextContent) ?? "";
 
   // Instagram captions alone can omit the actual content of photos/Reels.
   // Include observed images and sampled frames; audio is not transcribed.

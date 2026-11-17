@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
   user: vi.fn(),
   update: vi.fn(),
   reindex: vi.fn(),
+  plainText: vi.fn(),
+  visual: vi.fn(),
 }));
-vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
+vi.mock("../../network", () => ({ getBookmarkDomain: vi.fn() }));
 vi.mock("@karakeep/db", () => ({
   db: {
     query: {
@@ -35,10 +37,10 @@ vi.mock("@karakeep/shared/config", () => ({
   },
 }));
 vi.mock("@karakeep/trpc/models/bookmarks", () => ({
-  Bookmark: { getBookmarkPlainTextContent: vi.fn(async () => "Saved caption") },
+  Bookmark: { getBookmarkPlainTextContent: mocks.plainText },
 }));
 vi.mock("./instagramVisual", () => ({
-  getInstagramVisualContext: vi.fn(async () => ""),
+  getInstagramVisualContext: mocks.visual,
 }));
 import { runSummarization } from "./summarize";
 const request = (signal = new AbortController().signal) =>
@@ -51,6 +53,8 @@ const client = (inferFromText: ReturnType<typeof vi.fn>) =>
   ({ inferFromText }) as unknown as InferenceClient;
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.plainText.mockResolvedValue("Saved caption");
+  mocks.visual.mockResolvedValue("");
   mocks.bookmark.mockResolvedValue({
     id: "b",
     userId: "u",
@@ -102,5 +106,85 @@ describe("summary failure boundaries", () => {
     await runSummarization("b", request(), client(infer));
     expect(mocks.update).toHaveBeenCalledTimes(1);
     expect(mocks.reindex).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("upstream summary formats with custom Instagram processing", () => {
+  it.each([
+    {
+      type: "text",
+      text: { text: "Important saved note" },
+      expected: "Important saved note",
+    },
+    {
+      type: "asset",
+      asset: { content: "Extracted PDF contents", fileName: "paper.pdf" },
+      expected: "Extracted PDF contents",
+    },
+    {
+      type: "asset",
+      asset: { content: "Recovered image text", fileName: "scan.png" },
+      expected: "Recovered image text",
+    },
+  ])(
+    "summarizes $expected without reading link assets",
+    async ({ expected, ...bookmark }) => {
+      mocks.bookmark.mockResolvedValue({ id: "b", userId: "u", ...bookmark });
+      const infer = vi
+        .fn()
+        .mockResolvedValue({ response: "Saved summary", totalTokens: 8 });
+      await expect(
+        runSummarization("b", request(), client(infer)),
+      ).resolves.toBe("summarized");
+      expect(infer).toHaveBeenCalledWith(
+        expect.stringContaining(expected),
+        expect.any(Object),
+      );
+      expect(mocks.plainText).not.toHaveBeenCalled();
+      expect(mocks.update).toHaveBeenCalledTimes(1);
+      expect(mocks.reindex).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("skips an empty asset without writing a fictitious summary", async () => {
+    mocks.bookmark.mockResolvedValue({
+      id: "b",
+      userId: "u",
+      type: "asset",
+      asset: { content: "  ", fileName: "photo.jpg" },
+    });
+    const infer = vi.fn();
+    await expect(runSummarization("b", request(), client(infer))).resolves.toBe(
+      "skipped",
+    );
+    expect(infer).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("can summarize an Instagram post from visual observations alone", async () => {
+    mocks.bookmark.mockResolvedValue({
+      id: "b",
+      userId: "u",
+      type: "link",
+      title: "My manually assigned title",
+      link: {
+        title: "Instagram",
+        url: "https://www.instagram.com/p/abc/",
+        description: null,
+      },
+    });
+    mocks.plainText.mockResolvedValue("");
+    mocks.visual.mockResolvedValue("A red bicycle parked next to a tree");
+    const infer = vi
+      .fn()
+      .mockResolvedValue({ response: "A bicycle photograph", totalTokens: 8 });
+    await expect(runSummarization("b", request(), client(infer))).resolves.toBe(
+      "summarized",
+    );
+    expect(infer).toHaveBeenCalledTimes(1);
+    expect(infer).toHaveBeenCalledWith(
+      expect.stringContaining("A red bicycle"),
+      expect.any(Object),
+    );
   });
 });
