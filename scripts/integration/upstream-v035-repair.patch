@@ -1,0 +1,434 @@
+diff --git a/apps/workers/workers/crawlerWorker.ts b/apps/workers/workers/crawlerWorker.ts
+index f356e5c..671e278 100644
+--- a/apps/workers/workers/crawlerWorker.ts
++++ b/apps/workers/workers/crawlerWorker.ts
+@@ -100,6 +100,4 @@ import {
+ } from "./utils/metadataResolver";
+-import { runParseSubprocess } from "./utils/parseSubprocess";
+ import { importInstagramPost } from "./instagram";
+ import { instagramCanonicalUrl } from "./utils/instagramUrls";
+-import { installRedirectGuard } from "./utils/redirectGuard";
+ 
+@@ -331,2 +329,15 @@ async function runCrawler(
+ 
++  // Offline-copy jobs must not re-import media or enqueue inference jobs.
++  if (offlineCopiesOnly) {
++    await storeOfflineCopies(ctx, {
++      archiveFullPage,
++      storePdf,
++      precrawledArchiveAssetId,
++      oldPdfAssetId,
++      oldFullPageArchiveAssetId,
++      numRetriesLeft,
++    });
++    return { status: "completed" };
++  }
++
+   // Instagram login/interstitial pages are not the requested post content.
+diff --git a/apps/workers/workers/inference/inferenceWorker.test.ts b/apps/workers/workers/inference/inferenceWorker.test.ts
+index e51c5d4..7d60a6e 100644
+--- a/apps/workers/workers/inference/inferenceWorker.test.ts
++++ b/apps/workers/workers/inference/inferenceWorker.test.ts
+@@ -4,2 +4,3 @@ import type { DequeuedJob, RunnerFuncs } from "@karakeep/shared/queueing";
+ import type { TaggingOutcome } from "./taggingPolicy";
++import type { InferenceOutcome } from "./inferenceWorker";
+ 
+@@ -7,2 +8,3 @@ const mocks = vi.hoisted(() => ({
+   runner: vi.fn(),
++  buildClient: vi.fn(),
+   set: vi.fn(),
+@@ -14,6 +16,6 @@ const mocks = vi.hoisted(() => ({
+ }));
+-vi.mock("metrics", () => ({
++vi.mock("../../metrics", () => ({
+   workerStatsCounter: { labels: mocks.labels },
+ }));
+-vi.mock("workerTracing", () => ({
++vi.mock("../../workerTracing", () => ({
+   withWorkerTracing: (_name: string, fn: unknown) => fn,
+@@ -39,3 +41,3 @@ vi.mock("@karakeep/shared/config", () => ({
+ vi.mock("@karakeep/shared/inference", () => ({
+-  InferenceClientFactory: { build: () => ({}) },
++  InferenceClientFactory: { build: mocks.buildClient },
+ }));
+@@ -59,2 +61,4 @@ beforeEach(() => {
+   vi.clearAllMocks();
++  mocks.buildClient.mockReturnValue({});
++  mocks.summarize.mockResolvedValue("summarized");
+   mocks.set.mockReturnValue({ where: async () => undefined });
+@@ -96 +100,33 @@ describe("inference completion status", () => {
+ });
++
++
++describe("upstream summarization outcomes", () => {
++  it.each(["summarized", "skipped"] as const)("records %s without confusing tagging outcomes", async (outcome) => {
++    mocks.summarize.mockResolvedValue(outcome);
++    await OpenAiWorker.build();
++    const callbacks = mocks.runner.mock.calls[0][1] as RunnerFuncs<ZOpenAIRequest, InferenceOutcome>;
++    const job: DequeuedJob<ZOpenAIRequest> = {
++      id: "job", data: { type: "summarize", bookmarkId: "b" }, priority: 0,
++      runNumber: 0, abortSignal: new AbortController().signal,
++    };
++    const result = await callbacks.run(job);
++    expect(result).toBe(outcome);
++    await callbacks.onComplete!(job, result);
++    expect(mocks.set).toHaveBeenLastCalledWith({ summarizationStatus: outcome === "summarized" ? "success" : null });
++  });
++
++  it("clears pending summarization when no inference client is configured", async () => {
++    mocks.buildClient.mockReturnValue(null);
++    await OpenAiWorker.build();
++    const callbacks = mocks.runner.mock.calls[0][1] as RunnerFuncs<ZOpenAIRequest, InferenceOutcome>;
++    const job: DequeuedJob<ZOpenAIRequest> = {
++      id: "job", data: { type: "summarize", bookmarkId: "b" }, priority: 0,
++      runNumber: 0, abortSignal: new AbortController().signal,
++    };
++    const result = await callbacks.run(job);
++    expect(result).toBe("skipped");
++    await callbacks.onComplete!(job, result);
++    expect(mocks.set).toHaveBeenLastCalledWith({ summarizationStatus: null });
++    expect(mocks.summarize).not.toHaveBeenCalled();
++  });
++});
+diff --git a/apps/workers/workers/inference/inferenceWorker.ts b/apps/workers/workers/inference/inferenceWorker.ts
+index d932885..ae8f4ea 100644
+--- a/apps/workers/workers/inference/inferenceWorker.ts
++++ b/apps/workers/workers/inference/inferenceWorker.ts
+@@ -21,2 +21,4 @@ import type { TaggingOutcome } from "./taggingPolicy";
+ 
++export type InferenceOutcome = TaggingOutcome | SummarizationOutcome;
++
+ async function attemptMarkStatus(
+@@ -87,3 +89,3 @@ export class OpenAiWorker {
+       ZOpenAIRequest,
+-      TaggingOutcome
++      InferenceOutcome
+     >(
+@@ -143,3 +145,3 @@ async function runOpenAI(
+   job: DequeuedJob<ZOpenAIRequest>,
+-): Promise<SummarizationOutcome | undefined> {
++): Promise<InferenceOutcome> {
+   const jobId = job.id;
+diff --git a/apps/workers/workers/inference/summarize.test.ts b/apps/workers/workers/inference/summarize.test.ts
+index e2fdb6f..a7c6f51 100644
+--- a/apps/workers/workers/inference/summarize.test.ts
++++ b/apps/workers/workers/inference/summarize.test.ts
+@@ -9,4 +9,6 @@ const mocks = vi.hoisted(() => ({
+   reindex: vi.fn(),
++  plainText: vi.fn(),
++  visual: vi.fn(),
+ }));
+-vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
++vi.mock("../../network", () => ({ getBookmarkDomain: vi.fn() }));
+ vi.mock("@karakeep/db", () => ({
+@@ -37,6 +39,6 @@ vi.mock("@karakeep/shared/config", () => ({
+ vi.mock("@karakeep/trpc/models/bookmarks", () => ({
+-  Bookmark: { getBookmarkPlainTextContent: vi.fn(async () => "Saved caption") },
++  Bookmark: { getBookmarkPlainTextContent: mocks.plainText },
+ }));
+ vi.mock("./instagramVisual", () => ({
+-  getInstagramVisualContext: vi.fn(async () => ""),
++  getInstagramVisualContext: mocks.visual,
+ }));
+@@ -53,2 +55,4 @@ beforeEach(() => {
+   vi.clearAllMocks();
++  mocks.plainText.mockResolvedValue("Saved caption");
++  mocks.visual.mockResolvedValue("");
+   mocks.bookmark.mockResolvedValue({
+@@ -106 +110,39 @@ describe("summary failure boundaries", () => {
+ });
++
++
++describe("upstream summary formats with custom Instagram processing", () => {
++  it.each([
++    { type: "text", text: { text: "Important saved note" }, expected: "Important saved note" },
++    { type: "asset", asset: { content: "Extracted PDF contents", fileName: "paper.pdf" }, expected: "Extracted PDF contents" },
++    { type: "asset", asset: { content: "Recovered image text", fileName: "scan.png" }, expected: "Recovered image text" },
++  ])("summarizes $expected without reading link assets", async ({ expected, ...bookmark }) => {
++    mocks.bookmark.mockResolvedValue({ id: "b", userId: "u", ...bookmark });
++    const infer = vi.fn().mockResolvedValue({ response: "Saved summary", totalTokens: 8 });
++    await expect(runSummarization("b", request(), client(infer))).resolves.toBe("summarized");
++    expect(infer).toHaveBeenCalledWith(expect.stringContaining(expected), expect.any(Object));
++    expect(mocks.plainText).not.toHaveBeenCalled();
++    expect(mocks.update).toHaveBeenCalledTimes(1);
++    expect(mocks.reindex).toHaveBeenCalledTimes(1);
++  });
++
++  it("skips an empty asset without writing a fictitious summary", async () => {
++    mocks.bookmark.mockResolvedValue({ id: "b", userId: "u", type: "asset", asset: { content: "  ", fileName: "photo.jpg" } });
++    const infer = vi.fn();
++    await expect(runSummarization("b", request(), client(infer))).resolves.toBe("skipped");
++    expect(infer).not.toHaveBeenCalled();
++    expect(mocks.update).not.toHaveBeenCalled();
++  });
++
++  it("can summarize an Instagram post from visual observations alone", async () => {
++    mocks.bookmark.mockResolvedValue({
++      id: "b", userId: "u", type: "link", title: "My manually assigned title",
++      link: { title: "Instagram", url: "https://www.instagram.com/p/abc/", description: null },
++    });
++    mocks.plainText.mockResolvedValue("");
++    mocks.visual.mockResolvedValue("A red bicycle parked next to a tree");
++    const infer = vi.fn().mockResolvedValue({ response: "A bicycle photograph", totalTokens: 8 });
++    await expect(runSummarization("b", request(), client(infer))).resolves.toBe("summarized");
++    expect(infer).toHaveBeenCalledTimes(1);
++    expect(infer).toHaveBeenCalledWith(expect.stringContaining("A red bicycle"), expect.any(Object));
++  });
++});
+diff --git a/apps/workers/workers/inference/summarize.ts b/apps/workers/workers/inference/summarize.ts
+index 5e79ec4..25a6475 100644
+--- a/apps/workers/workers/inference/summarize.ts
++++ b/apps/workers/workers/inference/summarize.ts
+@@ -1,3 +1,3 @@
+ import { and, eq, isNull } from "drizzle-orm";
+-import { getBookmarkDomain } from "network";
++import { getBookmarkDomain } from "../../network";
+ 
+@@ -139,29 +139,4 @@ export async function runSummarization(
+ 
+-  const textToSummarize = buildSummarizationInput(
+-    bookmarkData,
+-    linkPlainTextContent,
+-  );
+-
+-    if (!link.description && !content) {
+-      // No content to infer from; skip summarization
+-      logger.info(
+-        `[inference] No content found for link "${bookmarkId}". Skipping summary.`,
+-      );
+-      return;
+-    }
+-
+-    textToSummarize = `
+-Title: ${link.title ?? ""}
+-Description: ${link.description ?? ""}
+-Content: ${content}
+-Publisher: ${link.publisher ?? ""}
+-Author: ${link.author ?? ""}
+-URL: ${link.url ?? ""}
+-`;
+-  } else {
+-    logger.warn(
+-      `[inference][${jobId}] Bookmark ${bookmarkId} (type: ${bookmarkData.type}) is not a LINK or TEXT type with content, or content is missing. Skipping summary.`,
+-    );
+-    return;
+-  }
++  let textToSummarize =
++    buildSummarizationInput(bookmarkData, linkPlainTextContent) ?? "";
+ 
+diff --git a/apps/workers/workers/inference/tagging.integration.test.ts b/apps/workers/workers/inference/tagging.integration.test.ts
+index 38a5082..925de0d 100644
+--- a/apps/workers/workers/inference/tagging.integration.test.ts
++++ b/apps/workers/workers/inference/tagging.integration.test.ts
+@@ -28,4 +28,4 @@ vi.mock("@karakeep/db", () => ({
+ }));
+-vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
+-vi.mock("trpc", () => ({ buildImpersonatingTRPCClient: vi.fn() }));
++vi.mock("../../network", () => ({ getBookmarkDomain: vi.fn() }));
++vi.mock("../../trpc", () => ({ buildImpersonatingTRPCClient: vi.fn() }));
+ vi.mock("@karakeep/shared/config", () => ({
+diff --git a/apps/workers/workers/inference/tagging.test.ts b/apps/workers/workers/inference/tagging.test.ts
+index 9c30275..fc66947 100644
+--- a/apps/workers/workers/inference/tagging.test.ts
++++ b/apps/workers/workers/inference/tagging.test.ts
+@@ -13,4 +13,4 @@ const mocks = vi.hoisted(() => ({
+ }));
+-vi.mock("network", () => ({ getBookmarkDomain: vi.fn() }));
+-vi.mock("trpc", () => ({
++vi.mock("../../network", () => ({ getBookmarkDomain: vi.fn() }));
++vi.mock("../../trpc", () => ({
+   buildImpersonatingTRPCClient: async () => ({ tags: { list: mocks.tagsApi } }),
+diff --git a/apps/workers/workers/inference/tagging.ts b/apps/workers/workers/inference/tagging.ts
+index 8192892..4032e4a 100644
+--- a/apps/workers/workers/inference/tagging.ts
++++ b/apps/workers/workers/inference/tagging.ts
+@@ -1,4 +1,4 @@
+ import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
+-import { getBookmarkDomain } from "network";
+-import { buildImpersonatingTRPCClient } from "trpc";
++import { getBookmarkDomain } from "../../network";
++import { buildImpersonatingTRPCClient } from "../../trpc";
+ import { z } from "zod";
+diff --git a/apps/workers/workers/instagram.integration.test.ts b/apps/workers/workers/instagram.integration.test.ts
+index 73bedd4..b8b85b9 100644
+--- a/apps/workers/workers/instagram.integration.test.ts
++++ b/apps/workers/workers/instagram.integration.test.ts
+@@ -8,3 +8,3 @@ import * as schema from "@karakeep/db/schema";
+ import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
+-import type { CrawlContext } from "./crawlerWorker";
++import type { CrawlContext } from "./crawler/common";
+ const state = vi.hoisted(() => ({
+@@ -16,2 +16,3 @@ const state = vi.hoisted(() => ({
+   sequence: 0,
++  sandbox: { url: undefined as string | undefined },
+ }));
+@@ -34,3 +35,3 @@ vi.mock("@karakeep/shared-server", () => ({
+ }));
+-vi.mock("network", () => ({ getProxyAgent: vi.fn() }));
++vi.mock("../network", () => ({ getProxyAgent: vi.fn() }));
+ vi.mock("execa", () => ({ execa: state.gallery }));
+@@ -39,3 +40,3 @@ vi.mock("./utils/instagramPublic", () => ({
+ }));
+-vi.mock("@karakeep/shared/config", () => ({ default: { maxAssetSizeMb: 50 } }));
++vi.mock("@karakeep/shared/config", () => ({ default: { maxAssetSizeMb: 50, sandbox: state.sandbox } }));
+ import { importInstagramPost } from "./instagram";
+@@ -55,2 +56,3 @@ beforeEach(() => {
+   state.sequence = 0;
++  state.sandbox.url = undefined;
+   sqlite = new Database(":memory:");
+@@ -102,2 +104,10 @@ afterEach(() => sqlite?.close());
+ describe("Instagram import transaction and cleanup", () => {
++  it("never silently bypasses an enabled remote sandbox", async () => {
++    state.sandbox.url = "http://sandbox.test";
++    await expect(importInstagramPost(context())).rejects.toThrow("remote sandbox");
++    expect(state.download).not.toHaveBeenCalled();
++    expect(state.gallery).not.toHaveBeenCalled();
++    expect(state.save).not.toHaveBeenCalled();
++    expect(db.select().from(schema.assets).all()[0].id).toBe("old");
++  });
+   it("keeps descriptive titles and replaces gallery assets atomically", async () => {
+diff --git a/apps/workers/workers/instagram.ts b/apps/workers/workers/instagram.ts
+index abac17d..e0767b0 100644
+--- a/apps/workers/workers/instagram.ts
++++ b/apps/workers/workers/instagram.ts
+@@ -6,3 +6,3 @@ import { execa } from "execa";
+ import { and, eq, inArray } from "drizzle-orm";
+-import { getProxyAgent } from "network";
++import { getProxyAgent } from "../network";
+ 
+@@ -20,3 +20,3 @@ import { tryCatch } from "@karakeep/shared/tryCatch";
+ 
+-import type { CrawlContext } from "./crawlerWorker";
++import type { CrawlContext } from "./crawler/common";
+ import { instagramCanonicalUrl } from "./utils/instagramUrls";
+@@ -95,2 +95,7 @@ export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
+   if (!url) return false;
++  if (serverConfig.sandbox?.url) {
++    throw new Error(
++      "Instagram media import is not implemented in the remote sandbox; refusing to download media in the privileged worker.",
++    );
++  }
+ 
+diff --git a/apps/workers/workers/utils/instagramPublic.test.ts b/apps/workers/workers/utils/instagramPublic.test.ts
+index 7a33e54..0ce4ccb 100644
+--- a/apps/workers/workers/utils/instagramPublic.test.ts
++++ b/apps/workers/workers/utils/instagramPublic.test.ts
+@@ -5,3 +5,3 @@ import { describe, expect, it, vi } from "vitest";
+ 
+-vi.mock("network", () => ({ fetchWithProxy: vi.fn() }));
++vi.mock("../../network", () => ({ fetchWithProxy: vi.fn() }));
+ 
+diff --git a/apps/workers/workers/utils/instagramPublic.ts b/apps/workers/workers/utils/instagramPublic.ts
+index ce0ae71..27368c0 100644
+--- a/apps/workers/workers/utils/instagramPublic.ts
++++ b/apps/workers/workers/utils/instagramPublic.ts
+@@ -3,4 +3,4 @@ import * as fs from "node:fs/promises";
+ import * as path from "node:path";
+-import { fetchWithProxy } from "network";
+-import type { RunProxyConfig } from "network";
++import { fetchWithProxy } from "../../network";
++import type { RunProxyConfig } from "../../network";
+ 
+diff --git a/packages/shared/inference.test.ts b/packages/shared/inference.test.ts
+index 2d2f279..37430c1 100644
+--- a/packages/shared/inference.test.ts
++++ b/packages/shared/inference.test.ts
+@@ -6,4 +6,2 @@ import type { OpenAIInferenceConfig } from "./inference";
+ 
+-let completionChoices: { message: { content: string | null } }[] = [];
+-
+ const capturedBodies: Record<string, unknown>[] = [];
+@@ -23,6 +21,3 @@ vi.mock("openai", () => {
+             capturedBodies.push(body);
+-            return {
+-              choices: completionChoices,
+-              usage: { total_tokens: 1 },
+-            };
++            return nextResponse;
+           }),
+@@ -71,3 +66,3 @@ describe("OpenAIInferenceClient response_format", () => {
+     capturedBodies.length = 0;
+-    completionChoices = [{ message: { content: "{}" } }];
++    nextResponse = defaultResponse;
+   });
+@@ -114,21 +109,2 @@ describe("OpenAIInferenceClient response_format", () => {
+   });
+-  it.each([
+-    { choices: [] },
+-    { choices: [{ message: { content: null } }] },
+-    { choices: [{ message: { content: "  " } }] },
+-  ])(
+-    "rejects empty completions with an actionable error: %j",
+-    async ({ choices }) => {
+-      completionChoices = choices;
+-      const client = new OpenAIInferenceClient(makeConfig("json"));
+-      await expect(
+-        client.inferFromText("infer tags", { schema: tagSchema }),
+-      ).rejects.toThrow("Got no message content from OpenAI");
+-      await expect(
+-        client.inferFromImage("infer tags", "image/jpeg", "base64", {
+-          schema: tagSchema,
+-        }),
+-      ).rejects.toThrow("Got no message content from OpenAI");
+-    },
+-  );
+ });
+@@ -182,2 +158,26 @@ describe("OpenAIInferenceClient response handling", () => {
+ 
++  it.each([null, "", "   "])("rejects missing or blank text content: %s", async (content) => {
++    nextResponse = completionWith({ content }, "stop");
++    const client = new OpenAIInferenceClient(makeConfig("plain"));
++    await expect(client.inferFromText("summarize", { schema: null })).rejects.toThrow(/no message content/);
++  });
++
++  it.each([null, "", "   "])("rejects blank structured image output: %s", async (content) => {
++    nextResponse = completionWith({ content }, "stop");
++    const client = new OpenAIInferenceClient(makeConfig("json"));
++    await expect(client.inferFromImage("tag", "image/png", "BASE64", { schema: tagSchema })).rejects.toThrow(/no message content/);
++  });
++
++  it("accepts whitespace-only OCR as no extracted text", async () => {
++    nextResponse = completionWith({ content: "   " }, "stop");
++    const client = new OpenAIInferenceClient(makeConfig("plain"));
++    await expect(client.inferFromImage("ocr", "image/png", "BASE64", { schema: null })).resolves.toMatchObject({ response: "" });
++  });
++
++  it("reports an absent choice instead of throwing a property-access error", async () => {
++    nextResponse = { choices: [], usage: { total_tokens: 0 } };
++    const client = new OpenAIInferenceClient(makeConfig("plain"));
++    await expect(client.inferFromText("summarize", { schema: null })).rejects.toThrow(/no choices/);
++  });
++
+   it("explains when the output token limit was hit", async () => {
+diff --git a/packages/shared/inference.ts b/packages/shared/inference.ts
+index e6b80bd..b3501b4 100644
+--- a/packages/shared/inference.ts
++++ b/packages/shared/inference.ts
+@@ -287,3 +287,3 @@ function extractOpenAIMessageContent(
+   const content = choice.message.content;
+-  if (content) {
++  if (content?.trim()) {
+     return content;
+@@ -362,6 +362,5 @@ export class OpenAIInferenceClient implements InferenceClient {
+ 
+-    const response = chatCompletion.choices[0]?.message?.content;
+-    if (!response?.trim()) {
+-      throw new Error(`Got no message content from OpenAI`);
+-    }
++    const response = extractOpenAIMessageContent(chatCompletion, {
++      allowEmpty: false,
++    });
+     return { response, totalTokens: chatCompletion.usage?.total_tokens };
+@@ -413,6 +412,8 @@ export class OpenAIInferenceClient implements InferenceClient {
+ 
+-    const response = chatCompletion.choices[0]?.message?.content;
+-    if (!response?.trim()) {
+-      throw new Error(`Got no message content from OpenAI`);
+-    }
++    // Free-form image prompts (e.g. OCR) can legitimately produce an empty
++    // answer when there's nothing to extract, so don't treat that as an error.
++    // Structured requests (e.g. tagging) always expect a JSON payload.
++    const response = extractOpenAIMessageContent(chatCompletion, {
++      allowEmpty: optsWithDefaults.schema === null,
++    });
+     return { response, totalTokens: chatCompletion.usage?.total_tokens };
