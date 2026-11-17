@@ -1,0 +1,27 @@
+name: Build provisional upstream integration
+on:
+  push:
+    branches: [upstream-v035-provisional]
+    paths: [.github/workflows/provisional-upstream-merge.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge upstream retaining custom conflict hunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/karakeep-app/karakeep.git
+          git fetch --no-tags upstream refs/tags/v0.35.0:refs/tags/upstream-v0.35.0
+          git merge --no-ff -X ours --no-edit upstream-v0.35.0
+          git push origin HEAD:upstream-v035-provisional
+      - name: Note
+        run: echo "PROVISIONAL ONLY. -X ours chooses local hunks on conflict; upstream changes in those hunks require manual review. DO NOT DEPLOY."
