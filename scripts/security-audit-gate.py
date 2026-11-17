@@ -88,7 +88,15 @@ def review(report: dict) -> tuple[list[str], list[str]]:
                 for p in paths
             )
         if not allowed:
-            errors.append("OUT-OF-SCOPE HIGH: " + name + "; unknown/runtime path found")
+            unclassified = (
+                [p for p in paths if not ((p.startswith("docs>") or p.startswith("docs__")) and "postman" in p.lower())]
+                if module == "@faker-js/faker"
+                else [p for p in paths if not any(marker in p.lower() for marker in BUILD_TOOLS)]
+            )
+            errors.append(
+                "OUT-OF-SCOPE HIGH: " + name + "; unclassified paths ("
+                + str(len(unclassified)) + "): " + repr(unclassified[:20])
+            )
         else:
             warnings.append(
                 "DOCUMENTED RESIDUAL HIGH: " + name + "; "
