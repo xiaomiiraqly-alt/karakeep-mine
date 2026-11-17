@@ -52,36 +52,27 @@ function isSummarizeJob(jobData: object | undefined): boolean {
   return parsed.success && parsed.data.type === "summarize";
 }
 
-/**
- * Clears the `pending` status of a job that was skipped without doing any work,
- * so it does not sit as "summarizing" forever. Mirrors what the crawler does
- * when a job will never produce a result.
- */
+/** Clear the pending status if inference produced no result. */
 async function attemptClearPendingStatus(jobData: object | undefined) {
-  if (!jobData) {
-    return;
-  }
+  if (!jobData) return;
   try {
     const request = zOpenAIRequestSchema.parse(jobData);
-    if (request.type !== "summarize") {
-      return;
-    }
+    const status =
+      request.type === "summarize"
+        ? bookmarks.summarizationStatus
+        : bookmarks.taggingStatus;
     await db
       .update(bookmarks)
-      .set({ summarizationStatus: null })
-      .where(
-        and(
-          eq(bookmarks.id, request.bookmarkId),
-          eq(bookmarks.summarizationStatus, "pending"),
-        ),
-      );
+      .set(
+        request.type === "summarize"
+          ? { summarizationStatus: null }
+          : { taggingStatus: null },
+      )
+      .where(and(eq(bookmarks.id, request.bookmarkId), eq(status, "pending")));
   } catch (e) {
-    logger.error(
-      `Something went wrong when clearing the summarization status: ${e}`,
-    );
+    logger.error("Failed to clear skipped inference status: " + e);
   }
 }
-
 export class OpenAiWorker {
   static async build() {
     logger.info("Starting inference worker ...");
@@ -105,17 +96,17 @@ export class OpenAiWorker {
             await attemptMarkStatus(job.data, "failure");
             return;
           }
-          workerStatsCounter.labels("inference", "completed").inc();
-          const jobId = job.id;
-          logger.info(`[inference][${jobId}] Completed successfully`);
-          // A summarization only counts as successful when the job reports it
-          // actually wrote one. Anything else — disabled in the config or by
-          // the user, no content to summarize, no inference client — leaves no
-          // summary behind, so claiming success would be a lie.
-          if (isSummarizeJob(job.data) && result !== "summarized") {
+          // Skipped work must not count as successful AI processing.
+          if (
+            result === "skipped" ||
+            (isSummarizeJob(job.data) && result !== "summarized")
+          ) {
             await attemptClearPendingStatus(job.data);
+            logger.info("[inference][" + job.id + "] Skipped without a result");
             return;
           }
+          workerStatsCounter.labels("inference", "completed").inc();
+          logger.info("[inference][" + job.id + "] Completed successfully");
           await attemptMarkStatus(job.data, "success");
         },
         onError: async (job) => {
@@ -151,12 +142,8 @@ async function runOpenAI(
     logger.debug(
       `[inference][${jobId}] No inference client configured, nothing to do now`,
     );
-    // A summarize job that never reached a model produced no summary, so it
-    // must not be recorded as one. Tagging is left as it was.
-    const parsed = zOpenAIRequestSchema.safeParse(job.data);
-    return parsed.success && parsed.data.type === "summarize"
-      ? "skipped"
-      : undefined;
+    // No model: neither tags nor summary was actually generated.
+    return "skipped";
   }
 
   const request = zOpenAIRequestSchema.safeParse(job.data);
