@@ -19,6 +19,7 @@ import { InferenceClient } from "@karakeep/shared/inference";
 import logger from "@karakeep/shared/logger";
 import { buildSummaryPrompt } from "@karakeep/shared/prompts.server";
 import { DequeuedJob } from "@karakeep/shared/queueing";
+import { buildSummarizationInput } from "@karakeep/shared/summarization";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 
@@ -49,7 +50,17 @@ async function fetchBookmarkDetailsForSummary(bookmarkId: string) {
           url: true,
         },
       },
-      // If assets (like PDFs with extracted text) should be summarized, extend here
+      text: {
+        columns: {
+          text: true,
+        },
+      },
+      asset: {
+        columns: {
+          content: true,
+          fileName: true,
+        },
+      },
     },
   });
 
@@ -59,16 +70,24 @@ async function fetchBookmarkDetailsForSummary(bookmarkId: string) {
   return bookmark;
 }
 
+/**
+ * Whether a summarization job actually produced a summary.
+ *
+ * A skipped job must not be recorded as a successful summarization: that is what
+ * left asset bookmarks with `summarizationStatus = 'success'` and no summary.
+ */
+export type SummarizationOutcome = "summarized" | "skipped";
+
 export async function runSummarization(
   bookmarkId: string,
   job: DequeuedJob<ZOpenAIRequest>,
   inferenceClient: InferenceClient,
-) {
+): Promise<SummarizationOutcome> {
   if (!serverConfig.inference.enableAutoSummarization) {
     logger.debug(
       `[inference][${job.id}] Skipping summarization job for bookmark with id "${bookmarkId}" because it's disabled in the config.`,
     );
-    return;
+    return "skipped";
   }
   const jobId = job.id;
 
@@ -105,17 +124,23 @@ export async function runSummarization(
     logger.debug(
       `[inference][${jobId}] Skipping summarization job for bookmark with id "${bookmarkId}" because user has disabled auto-summarization.`,
     );
-    return;
+    return "skipped";
   }
 
-  let textToSummarize = "";
-  if (bookmarkData.type === BookmarkTypes.LINK && bookmarkData.link) {
-    const link = bookmarkData.link;
+  // Extracting the plain text content of a link hits the asset store, so it's
+  // only resolved for the bookmark type that needs it.
+  const linkPlainTextContent =
+    bookmarkData.type === BookmarkTypes.LINK && bookmarkData.link
+      ? ((await Bookmark.getBookmarkPlainTextContent(
+          bookmarkData.link,
+          bookmarkData.userId,
+        )) ?? "")
+      : "";
 
-    // Extract plain text content from HTML for summarization
-    let content =
-      (await Bookmark.getBookmarkPlainTextContent(link, bookmarkData.userId)) ??
-      "";
+  const textToSummarize = buildSummarizationInput(
+    bookmarkData,
+    linkPlainTextContent,
+  );
 
     if (!link.description && !content) {
       // No content to infer from; skip summarization
@@ -155,9 +180,9 @@ URL: ${link.url ?? ""}
 
   if (!textToSummarize.trim()) {
     logger.info(
-      `[inference][${jobId}] No content to summarize for bookmark ${bookmarkId}.`,
+      `[inference][${jobId}] No content to summarize for bookmark ${bookmarkId} (type: ${bookmarkData.type}). Skipping summary.`,
     );
-    return;
+    return "skipped";
   }
 
   const prompts = await db.query.customPrompts.findMany({
@@ -287,4 +312,6 @@ URL: ${link.url ?? ""}
     priority: job.priority,
     groupId: bookmarkData.userId,
   });
+
+  return "summarized";
 }

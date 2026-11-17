@@ -1,6 +1,4 @@
-import { eq } from "drizzle-orm";
-import { workerStatsCounter } from "metrics";
-import { withWorkerEventLog, withWorkerTracing } from "workerTracing";
+import { and, eq } from "drizzle-orm";
 
 import type { ZOpenAIRequest } from "@karakeep/shared-server";
 import { db } from "@karakeep/db";
@@ -15,7 +13,9 @@ import { InferenceClientFactory } from "@karakeep/shared/inference";
 import logger from "@karakeep/shared/logger";
 import { DequeuedJob, getQueueClient } from "@karakeep/shared/queueing";
 
-import { runSummarization } from "./summarize";
+import { workerStatsCounter } from "../../metrics";
+import { withWorkerEventLog, withWorkerTracing } from "../../workerTracing";
+import { runSummarization, SummarizationOutcome } from "./summarize";
 import { runTagging } from "./tagging";
 import type { TaggingOutcome } from "./taggingPolicy";
 
@@ -39,6 +39,44 @@ async function attemptMarkStatus(
       .where(eq(bookmarks.id, request.bookmarkId));
   } catch (e) {
     logger.error(`Something went wrong when marking the tagging status: ${e}`);
+  }
+}
+
+function isSummarizeJob(jobData: object | undefined): boolean {
+  if (!jobData) {
+    return false;
+  }
+  const parsed = zOpenAIRequestSchema.safeParse(jobData);
+  return parsed.success && parsed.data.type === "summarize";
+}
+
+/**
+ * Clears the `pending` status of a job that was skipped without doing any work,
+ * so it does not sit as "summarizing" forever. Mirrors what the crawler does
+ * when a job will never produce a result.
+ */
+async function attemptClearPendingStatus(jobData: object | undefined) {
+  if (!jobData) {
+    return;
+  }
+  try {
+    const request = zOpenAIRequestSchema.parse(jobData);
+    if (request.type !== "summarize") {
+      return;
+    }
+    await db
+      .update(bookmarks)
+      .set({ summarizationStatus: null })
+      .where(
+        and(
+          eq(bookmarks.id, request.bookmarkId),
+          eq(bookmarks.summarizationStatus, "pending"),
+        ),
+      );
+  } catch (e) {
+    logger.error(
+      `Something went wrong when clearing the summarization status: ${e}`,
+    );
   }
 }
 
@@ -68,6 +106,14 @@ export class OpenAiWorker {
           workerStatsCounter.labels("inference", "completed").inc();
           const jobId = job.id;
           logger.info(`[inference][${jobId}] Completed successfully`);
+          // A summarization only counts as successful when the job reports it
+          // actually wrote one. Anything else — disabled in the config or by
+          // the user, no content to summarize, no inference client — leaves no
+          // summary behind, so claiming success would be a lie.
+          if (isSummarizeJob(job.data) && result !== "summarized") {
+            await attemptClearPendingStatus(job.data);
+            return;
+          }
           await attemptMarkStatus(job.data, "success");
         },
         onError: async (job) => {
@@ -93,7 +139,9 @@ export class OpenAiWorker {
   }
 }
 
-async function runOpenAI(job: DequeuedJob<ZOpenAIRequest>) {
+async function runOpenAI(
+  job: DequeuedJob<ZOpenAIRequest>,
+): Promise<SummarizationOutcome | undefined> {
   const jobId = job.id;
 
   const inferenceClient = InferenceClientFactory.build();
@@ -101,7 +149,12 @@ async function runOpenAI(job: DequeuedJob<ZOpenAIRequest>) {
     logger.debug(
       `[inference][${jobId}] No inference client configured, nothing to do now`,
     );
-    return;
+    // A summarize job that never reached a model produced no summary, so it
+    // must not be recorded as one. Tagging is left as it was.
+    const parsed = zOpenAIRequestSchema.safeParse(job.data);
+    return parsed.success && parsed.data.type === "summarize"
+      ? "skipped"
+      : undefined;
   }
 
   const request = zOpenAIRequestSchema.safeParse(job.data);
@@ -126,8 +179,7 @@ async function runOpenAI(job: DequeuedJob<ZOpenAIRequest>) {
   });
   switch (request.data.type) {
     case "summarize":
-      await runSummarization(bookmarkId, job, inferenceClient);
-      break;
+      return await runSummarization(bookmarkId, job, inferenceClient);
     case "tag":
       return await runTagging(bookmarkId, job, inferenceClient);
     default:
