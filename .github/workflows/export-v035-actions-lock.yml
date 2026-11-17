@@ -1,0 +1,34 @@
+name: Generate reviewed integration action lock
+on:
+  push:
+    branches: [integrate-upstream-v0.35.0]
+    paths: [.github/workflows/export-v035-actions-lock.yml]
+permissions:
+  contents: read
+jobs:
+  lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 576fa089108022085b41c8cfdb9505b377fbcb33
+          persist-credentials: false
+      - name: Regenerate and verify official lock format
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh extension install github/gh-actions-lock --pin v0.4.0
+          gh actions-lock
+          gh actions-lock --verify
+          git diff --stat
+          git diff > "$RUNNER_TEMP/actions-lock.patch"
+          tar -czf "$RUNNER_TEMP/actions-lock-files.tar.gz" .github/workflows tooling/github
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-actions-lock
+          path: |
+            ${{ runner.temp }}/actions-lock.patch
+            ${{ runner.temp }}/actions-lock-files.tar.gz
+          retention-days: 7
