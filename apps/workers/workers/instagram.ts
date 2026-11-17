@@ -77,7 +77,11 @@ async function mediaFiles(folder: string): Promise<string[]> {
     .slice(0, MAX_MEDIA);
 }
 async function metadataFor(file: string): Promise<Meta> {
-  const result = await tryCatch(fs.readFile(file + ".json", "utf8"));
+  const metadataPath = file + ".json";
+  const stat = await tryCatch(fs.stat(metadataPath));
+  // Never read an oversized third-party metadata file into memory.
+  if (!stat.data?.isFile() || stat.data.size > 1_000_000) return {};
+  const result = await tryCatch(fs.readFile(metadataPath, "utf8"));
   if (!result.data || result.data.length > 1_000_000) return {};
   try {
     const value: unknown = JSON.parse(result.data);
