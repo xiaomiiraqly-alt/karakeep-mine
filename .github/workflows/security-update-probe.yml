@@ -1,0 +1,39 @@
+name: Probe patched security dependency resolutions
+on:
+  push:
+    branches: [audit-pnpm-security-updates]
+    paths: [.github/workflows/security-update-probe.yml]
+permissions:
+  contents: write
+jobs:
+  update-patches:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.3.1
+        with:
+          persist-credentials: true
+      - uses: $/tooling/github/setup
+      - name: Update dependency lockfile to patched advisory versions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm audit --fix=update --audit-level high || echo "Some unpatchable advisories remain"
+          pnpm install --lockfile-only --no-frozen-lockfile
+          git diff --stat -- pnpm-lock.yaml pnpm-workspace.yaml
+          echo "=== POST-FIX PRODUCTION DEPENDENCY AUDIT ==="
+          pnpm audit --prod --audit-level high || echo "Production dependencies still require remediation"
+          echo "=== POST-FIX FULL WORKSPACE AUDIT ==="
+          pnpm audit --audit-level high || echo "Other workspace dependencies still require remediation"
+      - name: Preserve lockfile changes on isolated security branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- pnpm-lock.yaml pnpm-workspace.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "security(deps): resolve known advisories to patched lockfile packages"
+            git push origin HEAD:audit-pnpm-security-updates
+          else
+            echo "No fixable lockfile changes."
+          fi
