@@ -1094,6 +1094,29 @@ export async function runTagging(
     curatedTagNames,
   );
 
+  // The model proposed at least five concepts, but conflict handling and
+  // concurrent edits can leave fewer than five distinct tags persisted.
+  // Never let the queue report "success" unless the database agrees.
+  const persistedTags = await db
+    .select({ name: bookmarkTags.name })
+    .from(tagsOnBookmarks)
+    .innerJoin(bookmarkTags, eq(tagsOnBookmarks.tagId, bookmarkTags.id))
+    .where(
+      and(
+        eq(tagsOnBookmarks.bookmarkId, bookmarkId),
+        eq(bookmarkTags.userId, bookmark.userId),
+      ),
+    );
+  if (
+    distinctTagCount(persistedTags.map((tag) => tag.name)) <
+    MIN_TOPICAL_TAGS
+  ) {
+    logger.warn(
+      `[inference][${jobId}] Saved tags fell below the required minimum for bookmark "${bookmarkId}" after persistence; recording incomplete status.`,
+    );
+    return "incomplete";
+  }
+
   // Propagate priority to child jobs
   const enqueueOpts: EnqueueOptions = {
     priority: job.priority,
