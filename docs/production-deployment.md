@@ -39,6 +39,42 @@ Use a root-owned directory with permissions `0700` on a separate storage locatio
 
 The upstream 0.35.0 image changes process privilege handling. On the isolated copy, verify that existing `/data` ownership and permissions allow the new process to write; inspect for warnings before adopting the documented `KARAKEEP_DISABLE_PRIVILEGE_DROP=true` compatibility escape hatch.
 
+### Opt-in backup helper for the known /opt/karakeep layout
+
+On the **main application VPS**, first obtain the reviewed script and inspect its
+contents before running it. By default it operates in **plan-only** mode:
+
+\`\`\`bash
+cd /opt/karakeep
+bash /path/to/production-backup.sh --plan /var/backups/karakeep
+\`\`\`
+
+The plan checks the Compose services, shared AWG network namespace, actual
+\`/data\` mount, source size, available backup space and destination overlap.
+It prints no environment variables or API keys and does not stop any service.
+
+Only after checking the output and accepting a temporary **Karakeep web/worker
+outage**, run the deliberate write operation:
+
+\`\`\`bash
+bash /path/to/production-backup.sh --execute /var/backups/karakeep
+\`\`\`
+
+The script stops **only** Compose service \`web\`, archives its persistent
+\`/data\` including SQLite database, WAL and assets, saves the original Compose
+files and private resolved configuration, validates tar readability and SHA-256,
+and starts the original \`web\` service again. It uses an EXIT trap to attempt
+web restart after failures. It does **not** stop AWG, Chrome, Meilisearch or Ozon.
+
+**Precautions:** It contains unencrypted user data and private configuration,
+is stored in a root-only directory, and must never be published, pasted into
+issues or uploaded to GitHub. Prefer a different disk and an encrypted off-host
+copy. It is NOT a substitute for validating SQLite integrity on an extracted
+copy, actually restoring the archive, or rehearsing migrations and rollback.
+The Meilisearch index is not consistently backed up by this script; use the
+Meilisearch snapshot mechanism or plan a reindex. Do not run \`--execute\`
+before reviewing the plan and determining an acceptable maintenance window.
+
 ## 3. Rehearse migration off-line
 
 Create an independent database/assets copy and an independent Compose project with **separate volume names, isolated port bindings and no production AWG network namespace**. Test the exact immutable candidate image with the copied data. Check database migrations, account logins, bookmarks and assets, search, and job processing. Keep secrets offline; use test API credentials or mock providers to avoid external charges.
