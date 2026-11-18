@@ -142,6 +142,34 @@ AI/Instagram/CDN services will be available from the VPS. Those require
 a subsequent isolated integration test with disposable config and assets.
 Never point the staging image at the live `/data` or Meilisearch index.
 
+### Offline web startup smoke after the database rehearsal
+
+Before production rollout, run `scripts/rehearse-web-startup.sh` against the
+separate migrated rehearsal directory. Pass the **immutable production
+candidate image digest** from the successful main publication (not the
+original old image and not a floating tag).
+
+The script first verifies that the supplied directory does not overlap the
+live Docker volume, then clones it again. It runs **only** the Next.js
+standalone web process from the candidate image, without running the worker
+queue. The container has `--network none`, no published ports, a read-only
+container root, dropped Linux capabilities, capped memory/PIDs, and dummy
+authentication/Meilisearch secrets. It does not inherit your production
+`.env`, VPN namespace or AI credentials. It probes `/api/health` from
+inside the container's network namespace and, after stopping it, verifies
+SQLite integrity and record counts on the test clone.
+
+```bash
+bash /path/to/rehearse-web-startup.sh \
+  ghcr.io/xiaomiiraqly-alt/karakeep-mine@sha256:REPLACE_WITH_PUBLISHED_DIGEST \
+  /var/backups/karakeep/.karakeep-migrate-REPLACE_WITH_ACTUAL_DIRECTORY
+```
+
+**This is a startup smoke test only**, not login, real Chrome/Meilisearch,
+worker queue processing, external Instagram downloads or live API
+connectivity. Those remain separate release acceptance gates. An HTTP 200
+here is not sufficient by itself to authorize production rollout.
+
 ## 4. Production rollout
 
 Record the old digest and current Compose override files. Add the new image reference as the **last** image override in the active Compose file sequence; make the change persistent for reboot. Verify the complete merged Compose configuration **without publishing it**. This must not alter `awg-client` or the host DNS.
