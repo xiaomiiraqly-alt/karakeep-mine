@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: staging-karakeep-image
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish-candidate:
@@ -38,6 +38,8 @@ jobs:
           [[ "$sha" == "$branch_head" ]] || { echo "Candidate branch advanced; refusing stale publication"; exit 1; }
           for workflow in ci.yml instagram-integration.yml chrome.yml; do
             for attempt in {1..80}; do
+              [[ "$sha" == "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/upstream-v035-provisional" --jq .object.sha)" ]] \
+                || { echo "Candidate advanced while waiting for CI; stopping old run"; exit 1; }
               # PR validation must be at the exact candidate SHA, not a green run
               # from a previous revision or a different branch.
               outcome="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$sha&per_page=100" \
