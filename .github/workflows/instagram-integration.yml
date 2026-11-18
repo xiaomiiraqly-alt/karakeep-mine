@@ -20,6 +20,7 @@ on:
       - "scripts/production-preflight.sh"
       - "scripts/production-backup.sh"
       - "scripts/verify-production-backup.py"
+      - "scripts/rehearse-db-migration.sh"
       - "scripts/tests/**"
       - "scripts/security-audit-gate.py"
       - "scripts/tests/test_security_audit_gate.py"
@@ -85,6 +86,8 @@ jobs:
         run: bash -n scripts/production-preflight.sh
       - name: Check opt-in production backup syntax
         run: bash -n scripts/production-backup.sh
+      - name: Check isolated migration rehearsal syntax
+        run: bash -n scripts/rehearse-db-migration.sh
       - name: Check isolated restore verifier syntax
         run: python3 -m py_compile scripts/verify-production-backup.py
       - name: Test security and backup verification tools
