@@ -16,6 +16,8 @@ context, not labels to copy blindly.
   subjects. A short initial result gets at most one additional content-aware
   completion pass, within the remaining inference deadline. Additional proposals
   undergo the same existing-vocabulary checks.
+- After persistence, verify the actual owner-scoped, distinct attached tag count before marking an inference job successful. Concurrent rule actions or database changes must not turn a short saved result into a false success.
+- Legacy success statuses from older releases are not automatically rewritten by this forward-looking check. Repair them through an authenticated, owner-aware admin workflow rather than blindly updating SQLite or deleting human tags.
 - Persist verified partial tags without removing saved AI or human links. If the
   final result still has fewer than five concepts, mark bookmark tagging as failed
   rather than successful. End that queue attempt without blindly restarting the
