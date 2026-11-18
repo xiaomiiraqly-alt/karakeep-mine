@@ -16,6 +16,7 @@ on:
       - "docker/Dockerfile"
       - ".github/workflows/instagram-integration.yml"
       - ".github/workflows/docker.yml"
+      - ".github/workflows/staging-image.yml"
       - "scripts/production-preflight.sh"
       - "scripts/production-backup.sh"
       - "scripts/verify-production-backup.py"
