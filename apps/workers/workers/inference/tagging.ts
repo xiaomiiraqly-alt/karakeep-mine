@@ -1108,8 +1108,7 @@ export async function runTagging(
       ),
     );
   if (
-    distinctTagCount(persistedTags.map((tag) => tag.name)) <
-    MIN_TOPICAL_TAGS
+    distinctTagCount(persistedTags.map((tag) => tag.name)) < MIN_TOPICAL_TAGS
   ) {
     logger.warn(
       `[inference][${jobId}] Saved tags fell below the required minimum for bookmark "${bookmarkId}" after persistence; recording incomplete status.`,
