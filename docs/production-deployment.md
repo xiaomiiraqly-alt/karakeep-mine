@@ -7,6 +7,7 @@ This runbook applies to the **custom fork** and the existing Ubuntu Docker Compo
 1. Record a tested commit SHA from PR #11 and verify that **CI**, **Instagram integration verification**, and **Chrome Image** finish successfully for that exact SHA. CI includes TypeScript, lint, formatting, unit/integration tests and Playwright E2E tests.
 2. Review the fork-specific files against upstream `v0.35.0`: Instagram import, titles, tags, OCR, remote sandbox, asset ownership and webhook/authentication behavior.
 3. Merge the reviewed PR into `main`; wait for main CI and the independent `Build and Publish Karakeep Mine` workflow.
+   The publisher checks the **same commit** for a successful `push` run of both the main CI and `Instagram integration verification` (which includes the security-audit gate and custom image smoke build). It waits for the latter or fails closed; a green run on another commit is not acceptable. The Chrome workflow is an additional pull-request review gate when relevant, not currently a release-publisher prerequisite.
 4. Copy the published **immutable** `ghcr.io/xiaomiiraqly-alt/karakeep-mine@sha256:...` digest from the publisher's job summary. Do **not** deploy the floating `:instagram` tag.
 5. Before any production upgrade, run an **isolated restore and migration test** using a copy of actual production data; a GitHub Actions fixture cannot prove compatibility with your existing database.
 
