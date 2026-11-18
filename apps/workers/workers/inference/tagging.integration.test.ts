@@ -363,6 +363,29 @@ describe("full tagging persistence against migrated SQLite", () => {
     expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(5);
   });
 
+  it("does not report success if saved tag coverage drops below five", async () => {
+    const topical = [
+      "Хэллоуин",
+      "Севастополь",
+      "Рестораны",
+      "Бары",
+      "Мероприятия",
+    ];
+    // Simulate a concurrent/manual change after the insertion transaction:
+    // the generated response had five concepts, but storage has only four.
+    state.events.mockImplementationOnce(async () => {
+      const saved = db.select().from(schema.tagsOnBookmarks).all();
+      expect(saved).toHaveLength(5);
+      db.delete(schema.tagsOnBookmarks)
+        .where(eq(schema.tagsOnBookmarks.tagId, saved[0].tagId))
+        .run();
+    });
+    expect(await runTagging("b", request(), inference(topical))).toBe(
+      "incomplete",
+    );
+    expect(db.select().from(schema.tagsOnBookmarks).all()).toHaveLength(4);
+  });
+
   it("stores a visual AI title and tags for an image without OCR text", async () => {
     db.delete(schema.bookmarkTexts).run();
     db.update(schema.bookmarks)

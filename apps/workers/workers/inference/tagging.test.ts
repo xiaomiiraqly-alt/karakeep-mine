@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   findUser: vi.fn(),
   findTags: vi.fn(),
   transaction: vi.fn(),
+  select: vi.fn(),
   vector: vi.fn(),
   reindex: vi.fn(),
   update: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@karakeep/db", () => ({
       customPrompts: { findMany: mocks.prompts },
     },
     transaction: mocks.transaction,
+    select: mocks.select,
     update: mocks.update,
   },
 }));
@@ -83,6 +85,21 @@ afterEach(() => vi.useRealTimers());
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.prompts.mockResolvedValue([]);
+  // Unit mocks report five saved concepts for successful persistence.
+  // The integration test suite separately exercises real SQLite and failures.
+  mocks.select.mockReturnValue({
+    from: () => ({
+      innerJoin: () => ({
+        where: async () => [
+          { name: "Погашение долгов" },
+          { name: "Кредиты" },
+          { name: "Финансовая грамотность" },
+          { name: "Долги" },
+          { name: "Бюджетирование" },
+        ],
+      }),
+    }),
+  });
   mocks.update.mockReturnValue({
     set: () => ({ where: () => ({ returning: async () => [{ id: "b" }] }) }),
   });
