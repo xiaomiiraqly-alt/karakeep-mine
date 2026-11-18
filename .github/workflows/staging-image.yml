@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - upstream-v035-provisional
-    paths:
-      - ".github/workflows/staging-image.yml"
-      - ".github/workflows/instagram-integration.yml"
   workflow_dispatch:
 
 permissions:
