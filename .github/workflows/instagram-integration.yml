@@ -17,6 +17,7 @@ on:
       - ".github/workflows/instagram-integration.yml"
       - ".github/workflows/docker.yml"
       - "scripts/production-preflight.sh"
+      - "scripts/production-backup.sh"
       - "scripts/security-audit-gate.py"
       - "scripts/tests/test_security_audit_gate.py"
       - "docs/production-deployment.md"
@@ -79,6 +80,8 @@ jobs:
       - uses: $/tooling/github/setup
       - name: Check read-only production preflight syntax
         run: bash -n scripts/production-preflight.sh
+      - name: Check opt-in production backup syntax
+        run: bash -n scripts/production-backup.sh
       - name: Test security audit gate
         run: python3 -m unittest discover -s scripts/tests -p 'test_security_audit_gate.py' -v
       - name: Audit full workspace; fail on unexpected HIGH/CRITICAL advisories
