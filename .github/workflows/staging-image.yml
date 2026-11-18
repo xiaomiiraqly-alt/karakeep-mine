@@ -1,0 +1,92 @@
+name: Build candidate image for isolated migration tests
+
+on:
+  push:
+    branches:
+      - upstream-v035-provisional
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: staging-karakeep-image
+  cancel-in-progress: true
+
+jobs:
+  publish-candidate:
+    if: github.repository == 'xiaomiiraqly-alt/karakeep-mine' && github.ref == 'refs/heads/upstream-v035-provisional'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact candidate commit
+        uses: actions/checkout@v4.3.1
+        with:
+          persist-credentials: false
+      - name: Verify matching branch HEAD and all three PR validation workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sha="$(git rev-parse HEAD)"
+          branch_head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/upstream-v035-provisional" --jq .object.sha)"
+          [[ "$sha" == "$branch_head" ]] || { echo "Candidate branch advanced; refusing stale publication"; exit 1; }
+          for workflow in ci.yml instagram-integration.yml chrome.yml; do
+            for attempt in {1..80}; do
+              [[ "$sha" == "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/upstream-v035-provisional" --jq .object.sha)" ]] \
+                || { echo "Candidate advanced while waiting for CI; stopping old run"; exit 1; }
+              # PR validation must be at the exact candidate SHA, not a green run
+              # from a previous revision or a different branch.
+              outcome="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$sha&per_page=100" \
+                --jq '[.workflow_runs[] | select(.event == "pull_request" and .head_branch == "upstream-v035-provisional")] | sort_by(.run_number, .run_attempt) | last | if . == null then "missing" else (.status + ":" + (.conclusion // "")) end')"
+              if [[ "$outcome" == "completed:success" ]]; then
+                echo "$workflow: success at $sha"
+                break
+              fi
+              if [[ "$outcome" == completed:* ]]; then
+                echo "$workflow failed or was cancelled: $outcome"
+                exit 1
+              fi
+              if (( attempt == 80 )); then
+                echo "$workflow: timed out waiting for $sha ($outcome)"
+                exit 1
+              fi
+              sleep 20
+            done
+          done
+          [[ "$sha" == "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/upstream-v035-provisional" --jq .object.sha)" ]]             || { echo "Branch advanced during validation"; exit 1; }
+          echo "CANDIDATE_SHA=$sha" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3.12.0
+      - name: Login to GHCR
+        uses: docker/login-action@v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish staging-only AIO image
+        id: image
+        uses: docker/build-push-action@v6.19.2
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: aio
+          platforms: linux/amd64
+          build-args: |
+            SERVER_VERSION=0.35.0-fork-staging
+          push: true
+          tags: ghcr.io/${{ github.repository }}:staging-${{ env.CANDIDATE_SHA }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.CANDIDATE_SHA }}
+            org.opencontainers.image.version=0.35.0-fork-staging
+          cache-from: type=gha,scope=upstream-v035
+          cache-to: type=gha,mode=max,scope=upstream-v035
+      - name: Record digest for isolated migration testing
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          echo "STAGING ONLY — not a production release" >> "$GITHUB_STEP_SUMMARY"
+          echo "ghcr.io/$GITHUB_REPOSITORY@$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          echo "Production was not touched." >> "$GITHUB_STEP_SUMMARY"

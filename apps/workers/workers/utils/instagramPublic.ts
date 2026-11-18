@@ -1,8 +1,8 @@
 /** Public Instagram media fallback. No user login, cookies or credentials are stored. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { fetchWithProxy } from "network";
-import type { RunProxyConfig } from "network";
+import { fetchWithProxy } from "../../network";
+import type { RunProxyConfig } from "../../network";
 
 const DOC_ID = "27128499623469141";
 const APP_ID = "936619743392459";
@@ -39,6 +39,7 @@ export function isInstagramCdnUrl(value: string): boolean {
       url.protocol === "https:" &&
       !url.username &&
       !url.password &&
+      !url.port &&
       (host === "cdninstagram.com" ||
         host.endsWith(".cdninstagram.com") ||
         host === "fbcdn.net" ||
@@ -342,6 +343,10 @@ export async function downloadInstagramMediaBatch(
   try {
     for (const [index, item] of post.media.entries()) {
       signal.throwIfAborted();
+      // Defense in depth: validate again at the network request boundary.
+      if (!isInstagramCdnUrl(item.url)) {
+        throw new Error("Invalid Instagram CDN URL");
+      }
       const ext = item.type === "video" ? ".mp4" : ".jpg";
       const filename = path.join(
         folder,

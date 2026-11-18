@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@karakeep/db/schema";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
-import type { CrawlContext } from "./crawlerWorker";
+import type { CrawlContext } from "./crawler/common";
 const state = vi.hoisted(() => ({
   db: {} as object,
   download: vi.fn(),
@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   remove: vi.fn(),
   gallery: vi.fn(),
   sequence: 0,
+  sandbox: { url: undefined as string | undefined },
 }));
 vi.mock("@karakeep/db", () => ({
   db: new Proxy(
@@ -32,12 +33,14 @@ vi.mock("@karakeep/shared-server", () => ({
   silentDeleteAsset: state.remove,
   QuotaService: { checkStorageQuota: vi.fn(async () => true) },
 }));
-vi.mock("network", () => ({ getProxyAgent: vi.fn() }));
+vi.mock("../network", () => ({ getProxyAgent: vi.fn() }));
 vi.mock("execa", () => ({ execa: state.gallery }));
 vi.mock("./utils/instagramPublic", () => ({
   downloadPublicInstagramPost: state.download,
 }));
-vi.mock("@karakeep/shared/config", () => ({ default: { maxAssetSizeMb: 50 } }));
+vi.mock("@karakeep/shared/config", () => ({
+  default: { maxAssetSizeMb: 50, sandbox: state.sandbox },
+}));
 import { importInstagramPost } from "./instagram";
 let sqlite: Database.Database;
 let db: ReturnType<typeof drizzle<typeof schema>>;
@@ -53,6 +56,7 @@ const context = (signal = new AbortController().signal) =>
 beforeEach(() => {
   vi.clearAllMocks();
   state.sequence = 0;
+  state.sandbox.url = undefined;
   sqlite = new Database(":memory:");
   db = drizzle(sqlite, { schema });
   migrate(db, { migrationsFolder: path.resolve("../../packages/db/drizzle") });
@@ -100,6 +104,16 @@ beforeEach(() => {
 });
 afterEach(() => sqlite?.close());
 describe("Instagram import transaction and cleanup", () => {
+  it("never silently bypasses an enabled remote sandbox", async () => {
+    state.sandbox.url = "http://sandbox.test";
+    await expect(importInstagramPost(context())).rejects.toThrow(
+      "remote sandbox",
+    );
+    expect(state.download).not.toHaveBeenCalled();
+    expect(state.gallery).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+    expect(db.select().from(schema.assets).all()[0].id).toBe("old");
+  });
   it("keeps descriptive titles and replaces gallery assets atomically", async () => {
     expect(await importInstagramPost(context())).toBe(true);
     const link = db.select().from(schema.bookmarkLinks).all()[0];

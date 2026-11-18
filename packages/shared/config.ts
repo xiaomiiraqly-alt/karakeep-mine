@@ -143,6 +143,7 @@ const allEnv = z.object({
   WEBHOOK_NUM_WORKERS: z.coerce.number().default(1),
   ASSET_PREPROCESSING_NUM_WORKERS: z.coerce.number().default(1),
   ASSET_PREPROCESSING_JOB_TIMEOUT_SEC: z.coerce.number().default(60),
+  ASSET_PREPROCESSING_PDF_PARSER_MEM_LIMIT_MB: z.coerce.number().default(1024),
   RULE_ENGINE_NUM_WORKERS: z.coerce.number().default(1),
   CRAWLER_DOWNLOAD_BANNER_IMAGE: stringBool("true"),
   CRAWLER_STORE_SCREENSHOT: stringBool("true"),
@@ -172,6 +173,16 @@ const allEnv = z.object({
   CRAWLER_DOMAIN_RATE_LIMIT_WINDOW_MS: z.coerce.number().min(1).optional(),
   CRAWLER_DOMAIN_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().min(1).optional(),
   CRAWLER_PREFLIGHT_USER_AGENT: z.string().optional(),
+  SANDBOX_REMOTE_SERVER_ENABLED: stringBool("false"),
+  SANDBOX_REMOTE_URL: z.string().url().optional(),
+  SANDBOX_REMOTE_TOKEN: z
+    .string()
+    // It's sent as a bearer token, so it must use the bearer token alphabet.
+    .regex(
+      /^[A-Za-z0-9._~+/-]+=*$/,
+      "SANDBOX_REMOTE_TOKEN can only contain letters, digits and . _ ~ + / - (optionally followed by =)",
+    )
+    .optional(),
   LOG_LEVEL: z.string().default("debug"),
   // https://no-color.org/: any nonempty value disables colors.
   NO_COLOR: z.string().optional().transform(Boolean),
@@ -210,6 +221,9 @@ const allEnv = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+
+  // Problem reports
+  PROBLEM_REPORTS_EMAIL: z.string().email().optional(),
   EMAIL_VERIFICATION_REQUIRED: stringBool("false"),
 
   // Asset storage configuration
@@ -222,6 +236,37 @@ const allEnv = z.object({
 
   // Rate limiting configuration
   RATE_LIMITING_ENABLED: stringBool("false"),
+  // Comma-separated IPs/CIDRs of reverse proxies whose X-Forwarded-For entries
+  // are trusted when working out a request's client IP. "private" expands to
+  // the loopback and private-network ranges; "none" trusts nothing. Only
+  // needed for chains of proxies: the one connecting to Karakeep never shows
+  // up in the header. Defaults to "none" because trusting private ranges lets
+  // clients on them pick their own IP.
+  TRUSTED_PROXIES: z
+    .string()
+    .default("none")
+    .transform((val) =>
+      val
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p),
+    )
+    .pipe(
+      z.array(
+        z.union([
+          z.literal("private"),
+          z.literal("none"),
+          z.ipv4(),
+          z.ipv6(),
+          z.cidrv4(),
+          z.cidrv6(),
+        ]),
+        {
+          error:
+            'TRUSTED_PROXIES must be a comma-separated list of IPs, CIDR ranges, "private" or "none"',
+        },
+      ),
+    ),
 
   // Redis configuration
   REDIS_URL: z.string().url().optional(),
@@ -367,6 +412,10 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
           }
         : undefined,
     },
+    problemReports: {
+      enabled: !!val.PROBLEM_REPORTS_EMAIL,
+      email: val.PROBLEM_REPORTS_EMAIL,
+    },
     inference: {
       isConfigured: !!val.OPENAI_API_KEY || !!val.OLLAMA_BASE_URL,
       numWorkers: val.INFERENCE_NUM_WORKERS,
@@ -475,6 +524,11 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
           : null,
       preflightUserAgent: val.CRAWLER_PREFLIGHT_USER_AGENT,
     },
+    sandbox: {
+      serverEnabled: val.SANDBOX_REMOTE_SERVER_ENABLED,
+      url: val.SANDBOX_REMOTE_URL,
+      token: val.SANDBOX_REMOTE_TOKEN,
+    },
     ocr: {
       langs: val.OCR_LANGS,
       cacheDir: val.OCR_CACHE_DIR,
@@ -523,6 +577,7 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
     assetPreprocessing: {
       numWorkers: val.ASSET_PREPROCESSING_NUM_WORKERS,
       jobTimeoutSec: val.ASSET_PREPROCESSING_JOB_TIMEOUT_SEC,
+      pdfParserMemLimitMb: val.ASSET_PREPROCESSING_PDF_PARSER_MEM_LIMIT_MB,
     },
     ruleEngine: {
       numWorkers: val.RULE_ENGINE_NUM_WORKERS,
@@ -548,6 +603,7 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
     rateLimiting: {
       enabled: val.RATE_LIMITING_ENABLED,
     },
+    trustedProxies: val.TRUSTED_PROXIES,
     redis: {
       url: val.REDIS_URL,
     },
@@ -608,6 +664,15 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
     });
     return z.NEVER;
   }
+  if (obj.problemReports.enabled && !obj.email.smtp) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "To enable problem reports (PROBLEM_REPORTS_EMAIL), SMTP settings must be configured",
+      fatal: true,
+    });
+    return z.NEVER;
+  }
   if (obj.auth.turnstile.enabled && !obj.auth.turnstile.secretKey) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -622,6 +687,15 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
       code: z.ZodIssueCode.custom,
       message:
         "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT is required when OTEL_EVENT_LOGS_EXPORT_ENABLED is true",
+      fatal: true,
+    });
+    return z.NEVER;
+  }
+  if ((obj.sandbox.serverEnabled || obj.sandbox.url) && !obj.sandbox.token) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "SANDBOX_REMOTE_TOKEN is required when SANDBOX_REMOTE_SERVER_ENABLED or SANDBOX_REMOTE_URL is set",
       fatal: true,
     });
     return z.NEVER;
@@ -689,6 +763,9 @@ export const clientConfig = {
   legal: {
     termsOfServiceUrl: serverConfig.legal.termsOfServiceUrl,
     privacyPolicyUrl: serverConfig.legal.privacyPolicyUrl,
+  },
+  problemReports: {
+    enabled: serverConfig.problemReports.enabled,
   },
   serverVersion: serverConfig.serverVersion,
   disableNewReleaseCheck: serverConfig.disableNewReleaseCheck,

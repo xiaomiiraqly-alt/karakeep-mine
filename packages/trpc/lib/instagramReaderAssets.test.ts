@@ -27,4 +27,16 @@ describe("Instagram Reader asset URLs", () => {
       original,
     );
   });
+  it("HTML-escapes URL attributes even if a signer returns unsafe characters", () => {
+    const html = '<img src="karakeep-asset:asset-id">';
+    const result = hydrateInstagramReaderAssets(
+      html,
+      new Set(["asset-id"]),
+      () => 'https://example.test/?q=" onerror="alert(1)&part=<img>',
+    );
+    expect(result).toContain("&quot;");
+    expect(result).toContain("&amp;");
+    expect(result).toContain("&lt;img&gt;");
+    expect(result).not.toContain('onerror="alert(1)"');
+  });
 });

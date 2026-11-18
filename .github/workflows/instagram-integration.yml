@@ -15,6 +15,17 @@ on:
       - "packages/trpc/models/bookmarks.ts"
       - "docker/Dockerfile"
       - ".github/workflows/instagram-integration.yml"
+      - ".github/workflows/docker.yml"
+      - ".github/workflows/staging-image.yml"
+      - "scripts/production-preflight.sh"
+      - "scripts/production-backup.sh"
+      - "scripts/verify-production-backup.py"
+      - "scripts/rehearse-db-migration.sh"
+      - "scripts/tests/**"
+      - "scripts/security-audit-gate.py"
+      - "scripts/tests/test_security_audit_gate.py"
+      - "docs/production-deployment.md"
+      - "packages/trpc/lib/instagramReaderAssets.ts"
   workflow_dispatch:
 
 # Keep only the latest validation run for each PR or branch.
@@ -29,10 +40,10 @@ jobs:
   workers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@v4.3.1
         with:
           persist-credentials: false
-      - uses: ./tooling/github/setup
+      - uses: $/tooling/github/setup
       - name: Typecheck workers
         run: pnpm --filter @karakeep/workers typecheck
       - name: Unit tests for Instagram URLs, gallery, and anonymous public downloads
@@ -47,7 +58,7 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@v4.3.1
         with:
           persist-credentials: false
       - name: Free space for the all-in-one image
@@ -56,10 +67,30 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet
           df -h /
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@v3.12.0
       - name: Build custom all-in-one image (no publishing)
         run: docker build --target aio -t karakeep-instagram:smoke -f docker/Dockerfile .
       - name: Check Instagram downloader is included
         run: docker run --rm --entrypoint /usr/local/bin/gallery-dl karakeep-instagram:smoke --version
       - name: Check FFmpeg is included
         run: docker run --rm --entrypoint /usr/bin/ffmpeg karakeep-instagram:smoke -version
+
+  security-and-deployment:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.3.1
+        with:
+          persist-credentials: false
+      - uses: $/tooling/github/setup
+      - name: Check read-only production preflight syntax
+        run: bash -n scripts/production-preflight.sh
+      - name: Check opt-in production backup syntax
+        run: bash -n scripts/production-backup.sh
+      - name: Check isolated migration rehearsal syntax
+        run: bash -n scripts/rehearse-db-migration.sh
+      - name: Check isolated restore verifier syntax
+        run: python3 -m py_compile scripts/verify-production-backup.py
+      - name: Test security and backup verification tools
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+      - name: Audit full workspace; fail on unexpected HIGH/CRITICAL advisories
+        run: python3 scripts/security-audit-gate.py

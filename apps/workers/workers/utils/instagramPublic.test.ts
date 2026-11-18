@@ -3,10 +3,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("network", () => ({ fetchWithProxy: vi.fn() }));
+vi.mock("../../network", () => ({ fetchWithProxy: vi.fn() }));
 
 import {
   downloadPublicInstagramPost,
+  downloadInstagramMediaBatch,
   fetchPublicInstagramPost,
   isInstagramCdnUrl,
   parsePublicInstagramPost,
@@ -136,6 +137,7 @@ describe("anonymous Instagram GraphQL extractor", () => {
       false,
     );
     expect(isInstagramCdnUrl("https://127.0.0.1/internal")).toBe(false);
+    expect(isInstagramCdnUrl("https://cdninstagram.com:8443/x")).toBe(false);
     expect(isInstagramCdnUrl("https://cdninstagram.com@127.0.0.1/")).toBe(
       false,
     );
@@ -357,5 +359,34 @@ describe("embedded browser HTML extraction", () => {
         "De7J5uajAKm",
       ),
     ).toBeNull();
+  });
+});
+
+describe("Instagram CDN fetch boundary", () => {
+  it("rejects a forged internal URL before any network request", async () => {
+    const folder = await fs.mkdtemp(
+      path.join(os.tmpdir(), "instagram-ssrf-test-"),
+    );
+    const requests = vi.fn();
+    vi.stubGlobal("fetch", requests);
+    try {
+      await expect(
+        downloadInstagramMediaBatch(
+          {
+            author: null,
+            caption: "",
+            media: [{ url: "https://127.0.0.1/private", type: "image" }],
+          },
+          folder,
+          1024,
+          2048,
+          new AbortController().signal,
+        ),
+      ).rejects.toThrow("Invalid Instagram CDN URL");
+      expect(requests).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      await fs.rm(folder, { recursive: true, force: true });
+    }
   });
 });

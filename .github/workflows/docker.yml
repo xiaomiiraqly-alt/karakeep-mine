@@ -1,48 +1,106 @@
 name: Build and Publish Karakeep Mine
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
   packages: write
 
 concurrency:
-  group: publish-karakeep-mine-${{ github.ref }}
-  cancel-in-progress: true
+  group: publish-karakeep-mine-main
+  cancel-in-progress: false
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
     steps:
-      - name: Check out source
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Check out tested source only
+        uses: actions/checkout@v4.3.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
           persist-credentials: false
+      - name: Require a successful CI run for this exact main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          test "$sha" = "$current" || { echo 'Refusing stale or non-main publication'; exit 1; }
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&status=success&per_page=100" \
+            --jq '[.workflow_runs[] | select(.event == "push" and .head_branch == "main")] | length')
+          test "$count" -gt 0 || { echo 'Successful main CI is required before publication'; exit 1; }
+          echo "VERIFIED_SHA=$sha" >> "$GITHUB_ENV"
+      - name: Require successful Instagram and security checks for this exact main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # CI and Instagram validation run independently on pushes to main.
+          # Avoid publishing if the custom-feature/security workflow is still
+          # running or has failed. Never fall back to another commit's result.
+          for attempt in {1..60}; do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/instagram-integration.yml/runs?head_sha=$VERIFIED_SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.event == "push" and .head_branch == "main")] | sort_by(.run_number, .run_attempt) | last | if . == null then "missing" else (.status + ":" + (.conclusion // "")) end')
+            if [[ "$result" == "completed:success" ]]; then
+              echo "Instagram integration, image smoke build, and security audit passed for $VERIFIED_SHA"
+              exit 0
+            fi
+            if [[ "$result" == completed:* ]]; then
+              echo "Refusing publication: Instagram/security check result is $result"
+              exit 1
+            fi
+            echo "Waiting for matching Instagram/security checks ($result, attempt $attempt/60)"
+            sleep 15
+          done
+          echo "Refusing publication: matching checks did not complete successfully"
+          exit 1
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@v3.12.0
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and publish custom Karakeep all-in-one image
-        uses: docker/build-push-action@v6
+      - name: Build and publish custom all-in-one image
+        id: image
+        uses: docker/build-push-action@v6.19.2
         with:
           context: .
           file: ./docker/Dockerfile
           target: aio
           platforms: linux/amd64
+          build-args: |
+            SERVER_VERSION=0.35.0-fork
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:instagram
-            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+            ghcr.io/${{ github.repository }}:sha-${{ env.VERIFIED_SHA }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            org.opencontainers.image.revision=${{ env.VERIFIED_SHA }}
+            org.opencontainers.image.version=0.35.0-fork
+          cache-from: type=gha,scope=upstream-v035
+          cache-to: type=gha,mode=max,scope=upstream-v035
+      - name: Record deployable immutable digest
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          echo "ghcr.io/$GITHUB_REPOSITORY@$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          echo 'No production server was modified by this workflow.' >> "$GITHUB_STEP_SUMMARY"

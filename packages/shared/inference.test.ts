@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { OpenAIInferenceClient } from "./inference";
+import { OllamaInferenceClient, OpenAIInferenceClient } from "./inference";
 import type { OpenAIInferenceConfig } from "./inference";
 
-let completionChoices: { message: { content: string | null } }[] = [];
-
 const capturedBodies: Record<string, unknown>[] = [];
+const defaultResponse = {
+  choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+  usage: { total_tokens: 1 },
+};
+let nextResponse: unknown = defaultResponse;
 const tagSchema = z.object({ tags: z.array(z.string()) });
 
 vi.mock("openai", () => {
@@ -16,10 +19,7 @@ vi.mock("openai", () => {
         completions: {
           create: vi.fn(async (body: Record<string, unknown>) => {
             capturedBodies.push(body);
-            return {
-              choices: completionChoices,
-              usage: { total_tokens: 1 },
-            };
+            return nextResponse;
           }),
         },
       },
@@ -28,6 +28,17 @@ vi.mock("openai", () => {
 
   return { default: OpenAIMock };
 });
+
+const ollamaMocks = vi.hoisted(() => ({
+  generate: vi.fn(),
+  abort: vi.fn(),
+}));
+
+vi.mock("ollama", () => ({
+  Ollama: vi.fn().mockImplementation(function () {
+    return { generate: ollamaMocks.generate, abort: ollamaMocks.abort };
+  }),
+}));
 
 vi.mock("openai/helpers/zod", () => ({
   zodResponseFormat: (schema: unknown, name: string) => ({
@@ -53,7 +64,7 @@ function makeConfig(
 describe("OpenAIInferenceClient response_format", () => {
   beforeEach(() => {
     capturedBodies.length = 0;
-    completionChoices = [{ message: { content: "{}" } }];
+    nextResponse = defaultResponse;
   });
 
   it("omits response_format for schema-less text inference in json mode", async () => {
@@ -96,23 +107,171 @@ describe("OpenAIInferenceClient response_format", () => {
       json_schema: { name: "schema" },
     });
   });
-  it.each([
-    { choices: [] },
-    { choices: [{ message: { content: null } }] },
-    { choices: [{ message: { content: "  " } }] },
-  ])(
-    "rejects empty completions with an actionable error: %j",
-    async ({ choices }) => {
-      completionChoices = choices;
-      const client = new OpenAIInferenceClient(makeConfig("json"));
+});
+
+function completionWith(
+  message: { content: string | null; refusal?: string | null },
+  finishReason: string,
+) {
+  return {
+    choices: [{ message, finish_reason: finishReason }],
+    usage: { total_tokens: 1 },
+  };
+}
+
+describe("OpenAIInferenceClient response handling", () => {
+  beforeEach(() => {
+    capturedBodies.length = 0;
+    nextResponse = defaultResponse;
+  });
+
+  it("returns an empty string for image inference that legitimately produced no text", async () => {
+    nextResponse = completionWith({ content: "" }, "stop");
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+
+    const res = await client.inferFromImage("ocr", "image/png", "BASE64", {
+      schema: null,
+    });
+
+    expect(res.response).toBe("");
+  });
+
+  it("still throws on empty schema-backed image inference", async () => {
+    nextResponse = completionWith({ content: "" }, "stop");
+    const client = new OpenAIInferenceClient(makeConfig("json"));
+
+    await expect(
+      client.inferFromImage("tag this image", "image/png", "BASE64", {
+        schema: tagSchema,
+      }),
+    ).rejects.toThrow(/no message content/);
+  });
+
+  it("still throws on empty text inference", async () => {
+    nextResponse = completionWith({ content: "" }, "stop");
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+
+    await expect(
+      client.inferFromText("summarize", { schema: null }),
+    ).rejects.toThrow(/no message content/);
+  });
+
+  it.each([null, "", "   "])(
+    "rejects missing or blank text content: %s",
+    async (content) => {
+      nextResponse = completionWith({ content }, "stop");
+      const client = new OpenAIInferenceClient(makeConfig("plain"));
       await expect(
-        client.inferFromText("infer tags", { schema: tagSchema }),
-      ).rejects.toThrow("Got no message content from OpenAI");
-      await expect(
-        client.inferFromImage("infer tags", "image/jpeg", "base64", {
-          schema: tagSchema,
-        }),
-      ).rejects.toThrow("Got no message content from OpenAI");
+        client.inferFromText("summarize", { schema: null }),
+      ).rejects.toThrow(/no message content/);
     },
   );
+
+  it.each([null, "", "   "])(
+    "rejects blank structured image output: %s",
+    async (content) => {
+      nextResponse = completionWith({ content }, "stop");
+      const client = new OpenAIInferenceClient(makeConfig("json"));
+      await expect(
+        client.inferFromImage("tag", "image/png", "BASE64", {
+          schema: tagSchema,
+        }),
+      ).rejects.toThrow(/no message content/);
+    },
+  );
+
+  it("accepts whitespace-only OCR as no extracted text", async () => {
+    nextResponse = completionWith({ content: "   " }, "stop");
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+    await expect(
+      client.inferFromImage("ocr", "image/png", "BASE64", { schema: null }),
+    ).resolves.toMatchObject({ response: "" });
+  });
+
+  it("reports an absent choice instead of throwing a property-access error", async () => {
+    nextResponse = { choices: [], usage: { total_tokens: 0 } };
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+    await expect(
+      client.inferFromText("summarize", { schema: null }),
+    ).rejects.toThrow(/no choices/);
+  });
+
+  it("explains when the output token limit was hit", async () => {
+    nextResponse = completionWith({ content: null }, "length");
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+
+    await expect(
+      client.inferFromImage("ocr", "image/png", "BASE64", { schema: null }),
+    ).rejects.toThrow(/INFERENCE_MAX_OUTPUT_TOKENS/);
+  });
+
+  it("surfaces refusals", async () => {
+    nextResponse = completionWith(
+      { content: null, refusal: "I can't help with that" },
+      "stop",
+    );
+    const client = new OpenAIInferenceClient(makeConfig("plain"));
+
+    await expect(
+      client.inferFromImage("ocr", "image/png", "BASE64", { schema: null }),
+    ).rejects.toThrow(/refused the request: I can't help with that/);
+  });
+});
+
+describe("OllamaInferenceClient abort handling", () => {
+  const makeClient = () =>
+    new OllamaInferenceClient({
+      baseUrl: "http://ollama.test",
+      textModel: "test-text-model",
+      imageModel: "test-image-model",
+      contextLength: 2048,
+      maxOutputTokens: 1024,
+      outputSchema: "plain",
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ollamaMocks.generate.mockImplementation(async () =>
+      (async function* () {
+        yield { response: "some text", eval_count: 2, prompt_eval_count: 3 };
+      })(),
+    );
+  });
+
+  it("doesn't start a request when the signal has already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("Job timed out"));
+
+    await expect(
+      makeClient().inferFromImage("prompt", "image/png", "aGVsbG8=", {
+        abortSignal: controller.signal,
+      }),
+    ).rejects.toThrow("Job timed out");
+    expect(ollamaMocks.generate).not.toHaveBeenCalled();
+  });
+
+  it("aborts the in-flight request when the signal fires", async () => {
+    const controller = new AbortController();
+    ollamaMocks.generate.mockImplementation(async () => {
+      controller.abort(new Error("Job timed out"));
+      return (async function* () {
+        yield { response: "partial" };
+      })();
+    });
+
+    await makeClient().inferFromText("prompt", {
+      abortSignal: controller.signal,
+    });
+    expect(ollamaMocks.abort).toHaveBeenCalledOnce();
+  });
+
+  it("runs normally with a live signal", async () => {
+    await expect(
+      makeClient().inferFromText("prompt", {
+        abortSignal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({ response: "some text", totalTokens: 5 });
+    expect(ollamaMocks.generate).toHaveBeenCalledOnce();
+    expect(ollamaMocks.abort).not.toHaveBeenCalled();
+  });
 });

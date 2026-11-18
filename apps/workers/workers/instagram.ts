@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execa } from "execa";
 import { and, eq, inArray } from "drizzle-orm";
-import { getProxyAgent } from "network";
+import { getProxyAgent } from "../network";
 
 import { db } from "@karakeep/db";
 import { AssetTypes, assets, bookmarkLinks } from "@karakeep/db/schema";
@@ -18,7 +18,7 @@ import serverConfig from "@karakeep/shared/config";
 import logger from "@karakeep/shared/logger";
 import { tryCatch } from "@karakeep/shared/tryCatch";
 
-import type { CrawlContext } from "./crawlerWorker";
+import type { CrawlContext } from "./crawler/common";
 import { instagramCanonicalUrl } from "./utils/instagramUrls";
 import { buildInstagramReaderHtml } from "./utils/instagramReaderHtml";
 import { instagramImportTitle } from "./inference/instagramTitle";
@@ -77,7 +77,11 @@ async function mediaFiles(folder: string): Promise<string[]> {
     .slice(0, MAX_MEDIA);
 }
 async function metadataFor(file: string): Promise<Meta> {
-  const result = await tryCatch(fs.readFile(file + ".json", "utf8"));
+  const metadataPath = file + ".json";
+  const stat = await tryCatch(fs.stat(metadataPath));
+  // Never read an oversized third-party metadata file into memory.
+  if (!stat.data?.isFile() || stat.data.size > 1_000_000) return {};
+  const result = await tryCatch(fs.readFile(metadataPath, "utf8"));
   if (!result.data || result.data.length > 1_000_000) return {};
   try {
     const value: unknown = JSON.parse(result.data);
@@ -93,6 +97,11 @@ async function metadataFor(file: string): Promise<Meta> {
 export async function importInstagramPost(ctx: CrawlContext): Promise<boolean> {
   const url = instagramCanonicalUrl(ctx.url);
   if (!url) return false;
+  if (serverConfig.sandbox?.url) {
+    throw new Error(
+      "Instagram media import is not implemented in the remote sandbox; refusing to download media in the privileged worker.",
+    );
+  }
 
   const folder = await fs.mkdtemp(
     path.join(os.tmpdir(), "karakeep-instagram-"),

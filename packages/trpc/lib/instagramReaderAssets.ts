@@ -4,6 +4,19 @@
  * The stored HTML contains only stable asset IDs; signed URLs are created on
  * demand so they never expire in the database or leak across bookmarks.
  */
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[char] ?? char;
+  });
+}
+
 export function hydrateInstagramReaderAssets(
   html: string | null,
   allowedIds: ReadonlySet<string>,
@@ -14,7 +27,7 @@ export function hydrateInstagramReaderAssets(
     /src="karakeep-asset:([a-zA-Z0-9-]+)"/g,
     (_match, id: string) =>
       allowedIds.has(id)
-        ? 'src="' + getSignedUrl(id).replace(/&/g, "&amp;") + '"'
+        ? 'src="' + escapeHtmlAttribute(getSignedUrl(id)) + '"'
         : "",
   );
 }

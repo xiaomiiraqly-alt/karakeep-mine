@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
-import { getBookmarkDomain } from "network";
-import { buildImpersonatingTRPCClient } from "trpc";
+import { getBookmarkDomain } from "../../network";
+import { buildImpersonatingTRPCClient } from "../../trpc";
 import { z } from "zod";
 import { getVectorStoreClient } from "@karakeep/shared/vectorStore";
 
@@ -837,7 +837,7 @@ export async function runTagging(
     logger.debug(
       `[inference][${job.id}] Skipping tagging job for bookmark with id "${bookmarkId}" because it's disabled in the config.`,
     );
-    return;
+    return "skipped";
   }
   const jobId = job.id;
   const bookmark = await fetchBookmark(bookmarkId);
@@ -862,7 +862,7 @@ export async function runTagging(
     logger.debug(
       `[inference][${jobId}] Skipping tagging job for bookmark with id "${bookmarkId}" because user has disabled auto-tagging.`,
     );
-    return;
+    return "skipped";
   }
 
   // Resolve curated tag names if configured
@@ -882,7 +882,7 @@ export async function runTagging(
       logger.info(
         `[inference][${jobId}] No selected curated tags remain; preserving saved tags.`,
       );
-      return;
+      return "skipped";
     }
   } else {
     // If no curated tags are configured, try to find some potentially relevant tags
@@ -991,7 +991,7 @@ export async function runTagging(
     logger.info(
       `[inference][${jobId}] Skipping tagging for bookmark "${bookmark.id}" due to missing content or empty tags; preserving existing tags.`,
     );
-    return result === null ? undefined : "incomplete";
+    return result === null ? "skipped" : "incomplete";
   }
 
   let preferredTags = await reuseExistingSemanticTags(
