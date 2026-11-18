@@ -75,6 +75,27 @@ The Meilisearch index is not consistently backed up by this script; use the
 Meilisearch snapshot mechanism or plan a reindex. Do not run `--execute`
 before reviewing the plan and determining an acceptable maintenance window.
 
+### Validate that the backup actually restores
+
+The archive checksum alone does not prove that the SQLite files can be read.
+On the application server, **without touching the live Docker volume**, run
+the reviewed `scripts/verify-production-backup.py` against the snapshot.
+Provide a new destination that does not exist yet:
+
+```bash
+python3 /path/to/verify-production-backup.py \
+  --snapshot /var/backups/karakeep/snapshot-20261118T073322Z \
+  --restore-to /var/backups/karakeep/restore-check-20261118
+```
+
+The verifier validates the archive's SHA-256, rejects unsafe paths and links,
+extracts into a new root-only directory, locates actual SQLite database files,
+runs `PRAGMA integrity_check` and `PRAGMA foreign_key_check` on each database,
+and reports **schema table counts only**, not personal data. This is a
+restore-integrity test; it does not run the v0.35.0 migrations. Retain the
+restored directory securely for an isolated migration rehearsal. Never start
+a staging container with a bind mount pointing at production `/data`.
+
 ## 3. Rehearse migration off-line
 
 Create an independent database/assets copy and an independent Compose project with **separate volume names, isolated port bindings and no production AWG network namespace**. Test the exact immutable candidate image with the copied data. Check database migrations, account logins, bookmarks and assets, search, and job processing. Keep secrets offline; use test API credentials or mock providers to avoid external charges.
