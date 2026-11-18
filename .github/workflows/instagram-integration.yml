@@ -15,6 +15,7 @@ on:
       - "packages/trpc/models/bookmarks.ts"
       - "docker/Dockerfile"
       - ".github/workflows/instagram-integration.yml"
+      - ".github/workflows/docker.yml"
       - "scripts/production-preflight.sh"
       - "scripts/security-audit-gate.py"
       - "scripts/tests/test_security_audit_gate.py"
