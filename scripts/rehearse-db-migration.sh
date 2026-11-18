@@ -69,8 +69,9 @@ docker run --rm \
   --tmpfs /tmp:rw,nosuid,nodev,size=64m \
   -e DATA_DIR=/data \
   -v "$stage:/data:rw" \
+  --workdir /db_migrations \
   --entrypoint node \
-  "$image" /db_migrations/index.js
+  "$image" index.js
 
 python3 - "$source_data" "$stage" <<'PY'
 import sqlite3
