@@ -102,6 +102,46 @@ Create an independent database/assets copy and an independent Compose project wi
 
 Do not ever point a candidate test container at the live database, live asset store or live Meilisearch index.
 
+### Staging image and network-isolated schema migration rehearsal
+
+PR validation alone does not produce a deployable custom image. The
+`.github/workflows/staging-image.yml` workflow builds a **separate staging-only
+image** on the candidate branch after the matching commit has passed CI,
+Instagram/security checks and Chrome Image. It does **not** change the stable
+`:instagram` tag or deploy to any VPS.
+
+Open the successful staging workflow's **job summary**, copy the full
+`ghcr.io/xiaomiiraqly-alt/karakeep-mine@sha256:...` reference, and verify
+the source SHA. Use the exact digest, not a floating image tag.
+
+On the primary VPS, after verifying the backup into
+`/var/backups/karakeep/restore-check-20261118`, run the reviewed
+`scripts/rehearse-db-migration.sh`:
+
+```bash
+bash /path/to/rehearse-db-migration.sh \
+  ghcr.io/xiaomiiraqly-alt/karakeep-mine@sha256:REPLACE_WITH_REAL_DIGEST \
+  /var/backups/karakeep/restore-check-20261118
+```
+
+**Replace the digest placeholder** with the image reference from the GitHub
+Actions summary. Never paste production API keys into this command. The
+rehearsal script:
+
+- Refuses to operate on the live Docker `/data` mount.
+- Clones the verified restored data into a new root-only directory.
+- Invokes the *new image's exact startup SQLite migration bundle* against
+  the clone, using `--network none`, no host mounts other than this clone,
+  limited capabilities, read-only container root, PID and memory limits.
+- Verifies both databases after migration and checks that existing
+  user/bookmark/asset record counts remain unchanged.
+
+The migration rehearsal **does not prove** that the full web and worker
+stack functions correctly, that worker queue migrations will succeed, or that
+AI/Instagram/CDN services will be available from the VPS. Those require
+a subsequent isolated integration test with disposable config and assets.
+Never point the staging image at the live `/data` or Meilisearch index.
+
 ## 4. Production rollout
 
 Record the old digest and current Compose override files. Add the new image reference as the **last** image override in the active Compose file sequence; make the change persistent for reboot. Verify the complete merged Compose configuration **without publishing it**. This must not alter `awg-client` or the host DNS.
