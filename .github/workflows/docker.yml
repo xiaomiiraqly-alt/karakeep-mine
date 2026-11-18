@@ -45,6 +45,31 @@ jobs:
             --jq '[.workflow_runs[] | select(.event == "push" and .head_branch == "main")] | length')
           test "$count" -gt 0 || { echo 'Successful main CI is required before publication'; exit 1; }
           echo "VERIFIED_SHA=$sha" >> "$GITHUB_ENV"
+      - name: Require successful Instagram and security checks for this exact main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # CI and Instagram validation run independently on pushes to main.
+          # Avoid publishing if the custom-feature/security workflow is still
+          # running or has failed. Never fall back to another commit's result.
+          for attempt in {1..60}; do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/instagram-integration.yml/runs?head_sha=$VERIFIED_SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.event == "push" and .head_branch == "main")] | sort_by(.run_number, .run_attempt) | last | if . == null then "missing" else (.status + ":" + (.conclusion // "")) end')
+            if [[ "$result" == "completed:success" ]]; then
+              echo "Instagram integration, image smoke build, and security audit passed for $VERIFIED_SHA"
+              exit 0
+            fi
+            if [[ "$result" == completed:* ]]; then
+              echo "Refusing publication: Instagram/security check result is $result"
+              exit 1
+            fi
+            echo "Waiting for matching Instagram/security checks ($result, attempt $attempt/60)"
+            sleep 15
+          done
+          echo "Refusing publication: matching checks did not complete successfully"
+          exit 1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3.12.0
       - name: Log in to GitHub Container Registry
