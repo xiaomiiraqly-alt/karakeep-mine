@@ -91,6 +91,8 @@ for name in ("db.db", "queue.db"):
             old_tables = {r[0] for r in a.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             new_tables = {r[0] for r in b.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             for table in ("user", "bookmarks", "assets"):
+                if table in old_tables and table not in new_tables:
+                    raise SystemExit(f"CORE TABLE DISAPPEARED: {table}")
                 if table in old_tables and table in new_tables:
                     n0 = a.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
                     n1 = b.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
